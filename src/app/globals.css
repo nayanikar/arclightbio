@@ -2,26 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+    /* Favicon palette: cream #FDFAF5, signal #BA7517, accent #534AB7 */
+    --color-cream: #fdfaf5;
+    --color-signal: #ba7517;
+    --color-accent: #534ab7;
+    --color-accent-muted: rgba(83, 74, 183, 0.4);
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+    --background: 40 67% 98%;
+    --foreground: 30 10% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 10% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 10% 12%;
+    --primary: 248 41% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 36 30% 93%;
+    --secondary-foreground: 30 10% 12%;
+    --muted: 36 25% 94%;
+    --muted-foreground: 30 8% 45%;
+    --accent: 36 30% 93%;
+    --accent-foreground: 30 10% 12%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 36 20% 88%;
+    --input: 36 20% 88%;
+    --ring: 248 41% 50%;
+    --radius: 0.625rem;
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f3ede6;
+    --color-text-primary: #1c1917;
+    --color-text-secondary: #57534e;
+    --color-text-tertiary: #78716c;
+    --color-border-tertiary: #e5ddd2;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-content-bg text-foreground antialiased;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  .zone-act {
+    background: #e1f5ee;
+    color: #085041;
+  }
+
+  .zone-early {
+    background: #faece7;
+    color: #712b13;
+  }
+
+  .zone-crowd {
+    background: #faeeda;
+    color: #633806;
+  }
+
+  .bg-cream {
+    background-color: var(--color-cream);
+  }
+
+  .text-signal {
+    color: var(--color-signal);
+  }
+
+  .text-accent-brand {
+    color: var(--color-accent);
+  }
+}
+
+@keyframes lp {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.animate-lp {
+  animation: lp 1.8s infinite;
 }

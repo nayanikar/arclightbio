@@ -28,9 +28,24 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# typescript build cache
+tsconfig.tsbuildinfo
+
+# accidental npm artifact files
+arclight-bio@*
+11.16.0
+/next
+
+# python
+__pycache__/
+*.pyc
+
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# local dev file store (no Supabase)
+/.data/
+
+# Spacebase1 enrollment keys and session state
+/.spacebase/
+

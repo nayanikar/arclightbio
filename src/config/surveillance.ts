@@ -1,0 +1,3 @@
+export const SURVEILLANCE_POLL_INTERVAL_MS = Number(
+  process.env.NEXT_PUBLIC_SURVEILLANCE_POLL_MS ?? 30_000
+);
