@@ -2,19 +2,21 @@
 """Shared helpers for Spacebase1 bridge scripts."""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 from urllib.parse import quote
 
 JsonDict = Dict[str, Any]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_AGENT = "arclightbio"
+DEFAULT_AGENT = "arclight"
 DEFAULT_WORKSPACE = ".spacebase/arclightbio"
-EXPECTED_SPACE_ID = "space-46111387-13ad-4e0f-b6ba-96fe54255d26"
+EXPECTED_SPACE_ID = "space-72519775-65ca-485c-a6bf-a75ef4f46c9b"
 
 
 def ensure_sdk_path() -> Path:
@@ -46,6 +48,33 @@ def session_map_path(workspace: Path) -> Path:
     return workspace / "session-map.json"
 
 
+def session_map_lock_path(workspace: Path) -> Path:
+    return workspace / ".session-map.lock"
+
+
+@contextmanager
+def session_map_lock(workspace: Path) -> Iterator[None]:
+    """Serialize reads/writes to session-map.json across concurrent emit processes."""
+    lock_path = session_map_lock_path(workspace)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def load_session_map(workspace: Path) -> JsonDict:
+    with session_map_lock(workspace):
+        return load_json(session_map_path(workspace))
+
+
+def save_session_map(workspace: Path, payload: JsonDict) -> None:
+    with session_map_lock(workspace):
+        save_json(session_map_path(workspace), payload)
+
+
 def observatory_meta_path(workspace: Path) -> Path:
     return workspace / "observatory.json"
 
@@ -57,20 +86,15 @@ def enrollment_path(workspace: Path) -> Path:
 def load_json(path: Path) -> JsonDict:
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return {}
+    return json.loads(text)
 
 
 def save_json(path: Path, payload: JsonDict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-def load_session_map(workspace: Path) -> JsonDict:
-    return load_json(session_map_path(workspace))
-
-
-def save_session_map(workspace: Path, payload: JsonDict) -> None:
-    save_json(session_map_path(workspace), payload)
 
 
 def build_observatory_url(enrollment: JsonDict) -> Optional[str]:

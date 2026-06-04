@@ -10,11 +10,14 @@ import type {
   OpportunityStatus,
   QualityScores,
   SurveillanceTags,
+  BlackboardState,
 } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import * as fileStore from "./fileStore";
 import { domainContextToIndicationType } from "./domainContext";
+import { sanitizeScientificClaim } from "./scientificLanguage";
+import type { DeriskRecommendation } from "@/types/OpportunityObject";
 
 const DEFAULT_ORG_CONTEXTS: OrganizationContext[] = [
   {
@@ -125,7 +128,8 @@ export async function listOrgContexts(): Promise<OrganizationContext[]> {
       .select("*")
       .order("org_name", { ascending: true });
     if (error) throw error;
-    return (data ?? []).map(mapOrgContextRow);
+    const mapped = (data ?? []).map(mapOrgContextRow);
+    return mapped.length > 0 ? mapped : [...DEFAULT_ORG_CONTEXTS];
   }
   return Array.from(memoryStore.orgContexts.values());
 }
@@ -138,8 +142,14 @@ export async function getOrgContext(id: string): Promise<OrganizationContext | n
       .select("*")
       .eq("id", id)
       .single();
-    if (error || !data) return null;
-    return mapOrgContextRow(data);
+    if (!error && data) {
+      return mapOrgContextRow(data);
+    }
+    return (
+      memoryStore.orgContexts.get(id) ??
+      DEFAULT_ORG_CONTEXTS.find((o) => o.id === id) ??
+      null
+    );
   }
   return memoryStore.orgContexts.get(id) ?? null;
 }
@@ -328,6 +338,8 @@ function mapOpportunityRow(
       (row.domain_context as DomainContext | undefined) ?? "general",
     indication_type:
       (row.indication_type as IndicationType | undefined) ?? "oncology",
+    blackboard_state:
+      (row.blackboard_state as BlackboardState | undefined) ?? undefined,
   };
 }
 
@@ -365,6 +377,7 @@ export async function updateOpportunityObject(
     evidence_tier: OpportunityObject["evidence_tier"];
     query_tier: OpportunityObject["query_tier"];
     prior_score: number;
+    blackboard_state: BlackboardState;
   }>
 ): Promise<void> {
   const payload = { ...updates, last_updated: new Date().toISOString() };
@@ -381,6 +394,24 @@ export async function updateOpportunityObject(
   }
 }
 
+function sanitizeDeriskRecommendation(
+  rec: DeriskRecommendation | undefined
+): DeriskRecommendation | undefined {
+  if (!rec) return undefined;
+  return {
+    ...rec,
+    study_type: sanitizeScientificClaim(rec.study_type),
+    primary_objective: sanitizeScientificClaim(rec.primary_objective),
+    patient_population: sanitizeScientificClaim(rec.patient_population),
+    primary_endpoint: sanitizeScientificClaim(rec.primary_endpoint),
+    estimated_timeline: sanitizeScientificClaim(rec.estimated_timeline),
+    estimated_cost_range: sanitizeScientificClaim(rec.estimated_cost_range),
+    closes_gap: sanitizeScientificClaim(rec.closes_gap),
+    biomarkers_of_efficacy: rec.biomarkers_of_efficacy.map(sanitizeScientificClaim),
+    biomarkers_of_safety: rec.biomarkers_of_safety.map(sanitizeScientificClaim),
+  };
+}
+
 export async function insertEvidenceCard(
   opportunityId: string,
   card: Omit<EvidenceCard, "id" | "timestamp"> & {
@@ -390,6 +421,8 @@ export async function insertEvidenceCard(
 ): Promise<EvidenceCard> {
   const fullCard: EvidenceCard = {
     ...card,
+    content: sanitizeScientificClaim(card.content),
+    derisk_recommendation: sanitizeDeriskRecommendation(card.derisk_recommendation),
     id: card.id ?? randomUUID(),
     timestamp: card.timestamp ?? new Date().toISOString(),
     quality_scores: card.quality_scores ?? defaultQualityScores(),

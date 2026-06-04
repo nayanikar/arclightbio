@@ -12,6 +12,33 @@ Every discovery session runs **live queries** against public biomedical APIs. No
 
 This section documents the major upgrades shipped after the initial build spec. If you are onboarding or demoing, start here.
 
+### Session integrity (Phase 1 — June 2026)
+
+Discovery sessions now fail honestly and resume correctly. Full audit tracker: [`issues.md`](issues.md) (Phase 1 complete; Phases 2–4 open).
+
+| Capability | Before | After |
+|------------|--------|-------|
+| Blackboard scheduling | Fire-and-forget `runBlackboard().catch()` — killed on serverless | `scheduleBlackboardRun()` with Vercel `waitUntil` |
+| Agent failure | Logged to Spacebase only; pipeline continued to `surveillance` | Retry once → terminal `agents_failed`; pipeline stops |
+| Pause mid-run | Resume jumped to `surveillance`; remaining agents skipped | Checkpoint in `blackboard_state`; resume continues agents |
+| Duplicate runs | Batch surveillance + manual re-run appended duplicate cards | Per-opportunity lock; batch route no longer re-runs blackboard |
+| SSE visibility | Agent failures invisible on discovery stream | Events: `agent_status`, `failed`, `paused` |
+| Org context | Supabase empty → discover 404 on org lookup | Falls back to `DEFAULT_ORG_CONTEXTS` |
+
+**New status:** `agents_failed` — shown in header + failure banner on opportunity page.
+
+**Orchestration:** [`src/lib/blackboardRun.ts`](src/lib/blackboardRun.ts) (lock, checkpoint, retry, fail-fast) · public API re-exported from [`src/lib/blackboard.ts`](src/lib/blackboard.ts).
+
+**Schema:** migration `012_blackboard_state.sql` — `blackboard_state jsonb` on `opportunity_objects`.
+
+**Error log:** `.data/blackboard-errors.log` — JSON lines prefixed `[SERIOUS]`.
+
+**Tests:** `npm test` — `scientificLanguage.test.ts` + `blackboardRun.test.ts`.
+
+### Scientific language standard
+
+Agent-generated text (hypothesis, evidence cards, de-risk recommendations) follows a centralized biomedical writing standard so claims distinguish target vs intervention vs drug vs indication. Implemented in [`src/lib/scientificLanguage.ts`](src/lib/scientificLanguage.ts), injected globally via [`src/api/anthropic.ts`](src/api/anthropic.ts), and enforced at persist time in `insertEvidenceCard()`. Details: [`index.md`](index.md) §21.
+
 ### Agent Upgrade v2.0
 
 The blackboard pipeline was expanded from six to **seven agents**, with richer evidence types and domain-aware behavior. Full specification: [`public/arclight_agent_upgrade_spec.md`](public/arclight_agent_upgrade_spec.md).
@@ -139,7 +166,7 @@ Observatory URL resolution was fixed so hash fragments in Spacebase URLs are not
 
 **Do not** set `SPACEBASE_OBSERVATORY_URL` in `.env.local`. After running `claim.py`, the sidebar **Open Observatory** link resolves automatically.
 
-Prepared space (current): `space-46111387-13ad-4e0f-b6ba-96fe54255d26` · agent label `archlightBio`.
+Prepared space (current): `space-72519775-65ca-485c-a6bf-a75ef4f46c9b` · agent label `arclight` · set `SPACEBASE_AGENT_NAME=arclight` in `.env.local`.
 
 ---
 
@@ -198,11 +225,31 @@ flowchart TB
 1. User enters a query on `/discover`, selects **Speed** or **Depth** mode, picks an **org context**, and optionally a **domain context** (e.g. oncology first-in-class).
 2. Claude classifies query maturity (`preclinical` / `clinical` / `established`) and sets a **prior score** anchor.
 3. PubMed results seed a hypothesis tailored to the org context and domain adjustments.
-4. Seven agents run sequentially on the blackboard (see order above), each posting evidence cards.
-5. The opportunity page streams updates via SSE; evidence appears in the left sidebar rail and agent graph.
-6. Scores recompute after each agent; the **actionability zone** (Too early / Act now / Crowded) reflects org-specific thresholds and indication type.
-7. Surveillance tags are generated; ongoing scans add new PubMed papers when relevant.
-8. Act now opportunities can assemble a **Regulatory Package** with provenance trail and compliance gaps mapped to FDA January 2025 AI guidance.
+4. Seven agents run sequentially on the blackboard (see order above), each posting evidence cards. Orchestration lives in [`src/lib/blackboardRun.ts`](src/lib/blackboardRun.ts) — lock, checkpoint, retry-once, fail-fast.
+5. The opportunity page streams updates via SSE (`agent_status`, `card`, `score`, `failed`, `paused`); evidence appears in the left sidebar rail and agent graph.
+6. On success, status → `surveillance`. On agent failure after retry → `agents_failed` (terminal). Pause mid-run saves checkpoint; resume continues remaining agents.
+7. Scores recompute after each agent; the **actionability zone** (Too early / Act now / Crowded) reflects org-specific thresholds and indication type.
+8. Surveillance tags are generated; ongoing scans add new PubMed papers when relevant.
+9. Act now opportunities can assemble a **Regulatory Package** with provenance trail and compliance gaps mapped to FDA January 2025 AI guidance.
+
+### Status lifecycle
+
+```
+initialising → agents_running → surveillance → (paused | complete | archived)
+                    ↓
+              agents_failed   (terminal — pipeline stopped after retry exhausted)
+                    ↓
+              paused          (mid-run stop saves checkpoint; resume continues agents)
+```
+
+| Status | Meaning |
+|--------|---------|
+| `initialising` | Opportunity created; blackboard not yet marked running |
+| `agents_running` | Blackboard agents executing |
+| `agents_failed` | Agent failed twice; see failure banner + `.data/blackboard-errors.log` |
+| `surveillance` | Blackboard complete; ongoing field monitoring |
+| `paused` | User paused (agents mid-run or surveillance) |
+| `complete` / `archived` | Terminal states |
 
 ---
 
@@ -225,6 +272,7 @@ The central data structure. One object per discovery session, persisted in Supab
 | `indication_type` | Oncology / autoimmune / rare disease — affects zone thresholds |
 | `surveillance_tags` | Concept/entity tags for ongoing field monitoring |
 | `change_log` | Audit trail of score changes and surveillance events |
+| `blackboard_state` | Checkpoint (`completedSteps`), last agent event, pause reason (Phase 1) |
 | `mode` | `speed` or `depth` — affects literature depth and evidence tier handling |
 
 ### Domain context
@@ -314,15 +362,18 @@ src/
     domainContext.ts      # Domain context definitions + adjustments
     modalityTypes.ts      # Modality assessment types
     targetList.ts         # Prioritized target parsing
-    blackboard.ts         # Agent orchestration (7 agents)
-  store/                  # Zustand stores (incl. selectedAgent)
+    blackboardRun.ts      # Blackboard orchestration (lock, checkpoint, retry, fail-fast)
+    blackboard.ts         # Re-exports blackboardRun public API
+  store/                  # Zustand stores (incl. selectedAgent, blackboardError)
   types/                  # OpportunityObject, RegulatoryPackage, etc.
 scripts/
   spacebase/              # Spacebase1 claim + intent emit bridge
     claim.py              # Claims prepared space, writes observatory.json
     common.py             # Shared space id + workspace config
     emit.py               # Emit intent events from CLI
-supabase/migrations/      # PostgreSQL schema (run 001 → 011 in order)
+supabase/migrations/      # PostgreSQL schema (run 001 → 012 in order)
+issues.md                 # Audit tracker — Phase 1 done; Phases 2–4 open
+index.md                  # Session-persistent app index (detailed lookup)
 public/
   arclight_agent_upgrade_spec.md  # Agent v2.0 specification
 ```
@@ -381,7 +432,7 @@ rm -rf .next && npm run dev
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
    ```
-3. Run migrations in order from `supabase/migrations/` in the Supabase SQL Editor (**001 → 011**).
+3. Run migrations in order from `supabase/migrations/` in the Supabase SQL Editor (**001 → 012**).
 
 Without Supabase, the app falls back to an in-memory store — fine for demos, but data is lost on restart.
 
@@ -400,6 +451,7 @@ Without Supabase, the app falls back to an in-memory store — fine for demos, b
 | `SUPABASE_SERVICE_ROLE_KEY` | Optional | Server-side DB writes |
 | `SPACEBASE_ENABLED` | Optional | Broadcast agent lifecycle to Observatory |
 | `SPACEBASE_WORKSPACE` | Optional | Path to Spacebase workspace (default `.spacebase/arclightbio`) |
+| `SPACEBASE_AGENT_NAME` | Optional | Agent label in Observatory (default `arclight`) |
 | `NEXT_PUBLIC_SURVEILLANCE_POLL_MS` | Optional | Dashboard poll interval (default 30s demo / 86400000 daily) |
 
 **Do not set** `SPACEBASE_OBSERVATORY_URL` in `.env.local` — URL hash fragments are stripped by dotenv. Use `claim.py` and read from `observatory.json` instead.
@@ -424,14 +476,15 @@ See [`.env.local.example`](.env.local.example) for the full list.
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/discover` | POST | Create opportunity + start blackboard (accepts `domainContext`) |
+| `/api/discover` | POST | Create opportunity + `scheduleBlackboardRun()` (accepts `domainContext`) |
 | `/api/discover/classify` | POST | Preview query tier classification |
 | `/api/opportunities` | GET | List all opportunities |
 | `/api/opportunity/[id]` | GET | Single opportunity with cards |
-| `/api/stream/[id]` | GET | SSE live updates during discovery |
+| `/api/stream/[id]` | GET | SSE live updates during discovery (`agent_status`, `failed`, `paused`) |
 | `/api/surveillance/[id]/stream` | GET | SSE surveillance scan progress |
-| `/api/opportunity/[id]/pause` | POST | Pause surveillance |
-| `/api/opportunity/[id]/resume` | POST | Resume surveillance |
+| `/api/opportunity/[id]/pause` | POST | Pause session (saves blackboard checkpoint if mid-run) |
+| `/api/opportunity/[id]/resume` | POST | Resume session; re-schedules blackboard if checkpoint incomplete |
+| `/api/blackboard/[id]` | POST | Manually re-run blackboard (`{ force?, resume? }`); 409 if lock busy |
 | `/api/regulatory/[id]` | POST | Assemble regulatory package |
 | `/api/spacebase/observatory` | GET | Resolve Observatory URL from claim files |
 | `/api/admin/backfill` | POST | Recompute scores + tier backfill |
@@ -503,7 +556,10 @@ python3 scripts/spacebase/claim.py
 # Enable in .env.local
 SPACEBASE_ENABLED=true
 SPACEBASE_WORKSPACE=.spacebase/arclightbio
+SPACEBASE_AGENT_NAME=arclight
 ```
+
+**Claimed space:** `space-72519775-65ca-485c-a6bf-a75ef4f46c9b`
 
 Use **Open Observatory** in the sidebar, or `GET /api/spacebase/observatory` for the URL.
 
@@ -537,6 +593,7 @@ npm run dev      # Development server
 npm run build    # Production build
 npm run start    # Production server
 npm run lint     # ESLint
+npm test         # Vitest — scientific language + blackboard lock/checkpoint
 ```
 
 ---
@@ -558,11 +615,14 @@ Run in order in Supabase SQL Editor:
 | `009_query_tier.sql` | Query tier column |
 | `010_query_tier_null_default.sql` | Query tier default fix |
 | `011_agent_upgrade.sql` | **v2.0:** domain_context, indication_type, card flags, derisk_recommendation |
+| `012_blackboard_state.sql` | **Phase 1:** `blackboard_state jsonb` for checkpoint, lastEvent, pauseReason |
 
 ---
 
 ## Further reading
 
+- [`issues.md`](issues.md) — Full pipeline audit (Phase 1 session integrity **done**; Phases 2–4 evidence/scoring/UI)
+- [`index.md`](index.md) — Detailed application index (flows, APIs, agents, hooks)
 - [`public/arclight_agent_upgrade_spec.md`](public/arclight_agent_upgrade_spec.md) — Agent v2.0 specification (multi-domain literature, modality, novelty, de-risking)
 - [`opportunity_space_build_spec.md`](opportunity_space_build_spec.md) — Original product specification, API contracts, and phased build plan
 - [`supabase/migrations/`](supabase/migrations/) — Database schema evolution

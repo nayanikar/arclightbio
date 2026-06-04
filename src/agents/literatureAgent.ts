@@ -15,6 +15,7 @@ import {
   expandSearchDomains,
   type DomainPaperSet,
 } from "@/lib/literatureDomains";
+import { sanitizeScientificClaim } from "@/lib/scientificLanguage";
 
 const INDICATION_SPECIFICITY_RULE = `Indication specificity rule: A paper is only relevant if it studies the same disease, condition, or patient population as the hypothesis, OR if it studies a mechanism that is directly and explicitly linked to the hypothesis disease in the paper itself.
 
@@ -39,6 +40,8 @@ const LITERATURE_AGENT_SYSTEM = `You are the Literature Agent for Opportunity Sp
 Review paper abstracts and return only those directly relevant to the hypothesis.
 Return JSON array of objects with: content (one-sentence claim), pmid, study_design, sample_size (number or null).
 Quality over quantity — max 5 papers.
+
+Each content claim must use precise pharmacology language: name intervention class (agonist, antagonist, inhibitor) or drug where relevant; do not attribute approval to a target symbol alone; hedge inferential claims.
 
 Relevance criteria:
 - The paper must support, contradict, or materially inform the specific hypothesis statement and patient population
@@ -143,8 +146,8 @@ function formatEvidenceContent(
       ? `[${formatDesignLabel(design)}, N=${sampleSize}]`
       : `[${formatDesignLabel(design)}]`;
 
-  if (claim.startsWith("[")) return claim;
-  return `${prefix} ${claim}`;
+  if (claim.startsWith("[")) return sanitizeScientificClaim(claim);
+  return sanitizeScientificClaim(`${prefix} ${claim}`);
 }
 
 export function buildPubMedEvidenceCard(
@@ -273,7 +276,9 @@ async function postCrossDomainCards(
       0.95,
       Math.max(0.55, conn.confidence ?? 0.72)
     );
-    const content = `[Cross-domain: ${conn.domain_a} × ${conn.domain_b}] ${conn.claim} — Mechanism: ${conn.mechanism}. ${conn.novelty}`;
+    const content = sanitizeScientificClaim(
+      `[Cross-domain: ${conn.domain_a} × ${conn.domain_b}] ${conn.claim} — Mechanism: ${conn.mechanism}. ${conn.novelty}`
+    );
 
     await insertEvidenceCard(obj.id, {
       content,
@@ -361,17 +366,39 @@ Apply the indication specificity rule strictly. Only return papers that pass the
 Papers:
 ${abstractBlock}`
     );
+    if (!Array.isArray(cardOutputs)) {
+      throw new Error("Literature filter returned invalid response");
+    }
   } catch {
-    cardOutputs = papers.slice(0, 5).map((p) => ({
-      content: p.title,
-      pmid: p.pmid,
-      study_design: detectStudyDesign(p.abstract),
-      sample_size: extractSampleSize(p.abstract),
-    }));
+    await insertEvidenceCard(obj.id, {
+      content:
+        "Literature relevance filter unavailable — papers retrieved but not validated for this hypothesis.",
+      source_url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(query)}`,
+      source_type: "pubmed",
+      contributing_agent: "literature",
+      quality_scores: {
+        sample_size: 0.3,
+        study_design: 0.3,
+        source_credibility: 0.4,
+        replication: 0.3,
+        recency: 0.5,
+        composite: 0.35,
+      },
+      regulatory_weight: 0.35,
+      raw_source_metadata: {
+        partial: true,
+        filter_failed: true,
+        papers_retrieved: papers.length,
+        query,
+        expandedDomainCount,
+      },
+    });
+    return;
   }
 
   for (const output of cardOutputs.slice(0, 5)) {
-    const paper = papers.find((p) => p.pmid === output.pmid) ?? papers[0];
+    const paper = papers.find((p) => String(p.pmid) === String(output.pmid));
+    if (!paper) continue;
     const sourceDomain =
       (paper as Paper & { source_domains?: string[] }).source_domains?.[0];
     await insertEvidenceCard(

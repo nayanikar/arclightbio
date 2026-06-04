@@ -7,6 +7,7 @@ import type {
   ActionabilityZone,
   OpportunityStatus,
   AgentName,
+  BlackboardAgentEvent,
 } from "@/types/OpportunityObject";
 import type { SurveillanceScanResult } from "@/lib/surveillance";
 import { notifyOpportunitiesUpdated } from "@/lib/events";
@@ -24,6 +25,8 @@ interface OpportunityState {
   status: OpportunityStatus;
   isStreaming: boolean;
   selectedAgent: AgentName | null;
+  blackboardError: string | null;
+  lastAgentStatus: BlackboardAgentEvent | null;
 
   setOpportunity: (obj: OpportunityObject) => void;
   addCard: (card: EvidenceCard) => void;
@@ -32,12 +35,15 @@ interface OpportunityState {
     actionability_score: number;
     actionability_zone: ActionabilityZone;
     status?: OpportunityStatus;
+    blackboard_error?: string | null;
   }) => void;
   applySurveillanceResult: (result: SurveillanceScanResult) => void;
   pauseSession: (entry: ChangeLogEntry) => void;
-  resumeSession: (entry: ChangeLogEntry) => void;
+  resumeSession: (entry: ChangeLogEntry, status?: OpportunityStatus) => void;
   setStreaming: (streaming: boolean) => void;
   setSelectedAgent: (agent: AgentName | null) => void;
+  setBlackboardError: (message: string | null) => void;
+  setAgentStatus: (event: BlackboardAgentEvent | null) => void;
   reset: () => void;
 }
 
@@ -52,6 +58,8 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
   status: "initialising",
   isStreaming: false,
   selectedAgent: null,
+  blackboardError: null,
+  lastAgentStatus: null,
 
   setOpportunity: (obj) => {
     persistOpportunitySnapshot(obj);
@@ -65,6 +73,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       changeLog: obj.change_log,
       lastSurveillanceCheck: obj.surveillance_tags.last_checked_at ?? null,
       streamingCards: obj.evidence_cards,
+      blackboardError: obj.blackboard_state?.lastError ?? null,
     });
   },
 
@@ -81,6 +90,10 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       actionabilityScore: scores.actionability_score,
       actionabilityZone: scores.actionability_zone,
       status: scores.status ?? state.status,
+      blackboardError:
+        scores.blackboard_error !== undefined
+          ? scores.blackboard_error
+          : state.blackboardError,
       opportunity: state.opportunity
         ? {
             ...state.opportunity,
@@ -192,14 +205,14 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
     notifyOpportunitiesUpdated();
   },
 
-  resumeSession: (entry) => {
+  resumeSession: (entry, status = "surveillance") => {
     set((state) => ({
-      status: "surveillance",
+      status,
       changeLog: [...state.changeLog, entry],
       opportunity: state.opportunity
         ? {
             ...state.opportunity,
-            status: "surveillance",
+            status,
             change_log: [...state.opportunity.change_log, entry],
           }
         : null,
@@ -211,6 +224,8 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),
   setSelectedAgent: (agent) => set({ selectedAgent: agent }),
+  setBlackboardError: (message) => set({ blackboardError: message }),
+  setAgentStatus: (event) => set({ lastAgentStatus: event }),
   reset: () =>
     set({
       opportunity: null,
@@ -223,5 +238,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       status: "initialising",
       isStreaming: false,
       selectedAgent: null,
+      blackboardError: null,
+      lastAgentStatus: null,
     }),
 }));

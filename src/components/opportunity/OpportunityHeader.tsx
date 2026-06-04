@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const STATUS_STYLES: Record<OpportunityStatus, string> = {
   initialising: "bg-gray-100 text-gray-600",
   agents_running: "bg-brand-purple/10 text-brand-purple animate-pulse",
+  agents_failed: "bg-red-100 text-red-700",
   complete: "bg-brand-teal/10 text-brand-teal",
   surveillance: "bg-brand-teal/10 text-brand-teal animate-pulse",
   paused: "bg-gray-100 text-gray-600",
@@ -17,6 +18,7 @@ const STATUS_STYLES: Record<OpportunityStatus, string> = {
 const STATUS_LABELS: Record<OpportunityStatus, string> = {
   initialising: "Initialising",
   agents_running: "Agents running",
+  agents_failed: "Discovery failed",
   complete: "Complete",
   surveillance: "Watching",
   paused: "Paused",

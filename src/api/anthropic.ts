@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ApiError, requireEnv } from "@/lib/http";
+import { withScientificWritingRules } from "@/lib/scientificLanguage";
 
 const MODEL = "claude-sonnet-4-20250514";
 
@@ -13,7 +14,7 @@ export async function callAgent(
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
-    system: systemPrompt,
+    system: withScientificWritingRules(systemPrompt),
     messages: [{ role: "user", content: userPrompt }],
   });
 

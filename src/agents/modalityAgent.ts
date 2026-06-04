@@ -12,6 +12,8 @@ import type { ModalityAssessment } from "@/lib/modalityTypes";
 export type { ModalityAssessment };
 
 const MODALITY_SYSTEM = `You are a drug modality expert advising on first-in-class therapeutic development.
+Use standard modality vocabulary: small molecule, monoclonal antibody (mAb), antibody-drug conjugate (ADC), siRNA/ASO, cell therapy, gene therapy, PROTAC/degrader.
+Pair each target with a recommended intervention modality; do not conflate target symbols with approved products.
 Return valid JSON only — a JSON array of modality assessments.`;
 
 function formatModalityAssessment(assessments: ModalityAssessment[]): string {

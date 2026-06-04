@@ -10,8 +10,7 @@ import { HypothesisPanel } from "@/components/opportunity/HypothesisPanel";
 import { SessionSummaryPanel } from "@/components/opportunity/SessionSummaryPanel";
 import { ModalityPanel } from "@/components/opportunity/ModalityPanel";
 import { ScoreStrip } from "@/components/opportunity/ScoreStrip";
-import { AgentNodeGraph } from "@/components/opportunity/AgentNodeGraph";
-import { MobileEvidenceDrawer } from "@/components/opportunity/MobileEvidenceDrawer";
+import { OpportunityTrailsPanel } from "@/components/opportunity/OpportunityTrailsPanel";
 import { SurveillancePauseButton } from "@/components/opportunity/SurveillancePanel";
 import { useOpportunityStream } from "@/hooks/useOpportunityStream";
 import { useSurveillanceSessionControls } from "@/hooks/useSurveillanceSessionControls";
@@ -27,7 +26,7 @@ import { SESSIONS_UPDATED_EVENT } from "@/lib/events";
 export default function OpportunityPage() {
   const params = useParams();
   const id = params.id as string;
-  useOpportunityStream(id);
+  const { reconnect } = useOpportunityStream(id);
   const {
     opportunity,
     setOpportunity,
@@ -36,9 +35,17 @@ export default function OpportunityPage() {
     status,
     streamingCards,
     addCard,
+    blackboardError,
   } = useOpportunityStore();
-  const { pausing, resuming, handlePause, handleResume, reloadOpportunity } =
-    useSurveillanceSessionControls();
+  const {
+    pausing,
+    resuming,
+    pauseError,
+    resumeError,
+    handlePause,
+    handleResume,
+    reloadOpportunity,
+  } = useSurveillanceSessionControls();
 
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -93,7 +100,10 @@ export default function OpportunityPage() {
         }
         setLoaded(true);
       })
-      .catch(console.error);
+      .catch(() => {
+        setNotFound(true);
+        setLoaded(true);
+      });
   }, [id, setOpportunity, addCard]);
 
   if (!loaded && !opportunity) {
@@ -171,7 +181,30 @@ export default function OpportunityPage() {
       />
 
       <PageContent>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+        {(blackboardError || pauseError || resumeError) && (
+          <div className="mb-4 space-y-2">
+            {blackboardError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <p className="font-medium">Discovery pipeline failed</p>
+                <p className="mt-1 text-xs text-red-700">{blackboardError}</p>
+                <Link href="/discover" className="mt-2 inline-block text-xs font-medium underline">
+                  Start a new discovery
+                </Link>
+              </div>
+            )}
+            {pauseError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                {pauseError}
+              </div>
+            )}
+            {resumeError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                {resumeError}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
           <div className="min-w-0 space-y-6">
             <OpportunityHeader
               searchQuery={obj.search_query}
@@ -180,13 +213,22 @@ export default function OpportunityPage() {
               mode={obj.mode}
               domainContext={obj.domain_context}
             />
-            <PrioritizedTargetsPanel cards={streamingCards} />
             <HypothesisPanel
               hypothesis={obj.hypothesis}
               status={status}
               evidenceTier={obj.evidence_tier}
             />
+            <PrioritizedTargetsPanel cards={streamingCards} />
             <SessionSummaryPanel />
+            <OpportunityTrailsPanel
+              onResume={async () => {
+                await handleResume();
+                if (useOpportunityStore.getState().status === "agents_running") {
+                  reconnect();
+                }
+              }}
+              resuming={resuming}
+            />
           </div>
 
           <aside className="space-y-4 lg:sticky lg:top-[73px] lg:self-start">
@@ -195,12 +237,9 @@ export default function OpportunityPage() {
               actionabilityZone={actionabilityZone}
             />
             <ModalityPanel cards={streamingCards} />
-            <AgentNodeGraph />
           </aside>
         </div>
       </PageContent>
-
-      <MobileEvidenceDrawer onResume={handleResume} resuming={resuming} />
     </>
   );
 }

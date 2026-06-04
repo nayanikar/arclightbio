@@ -7,6 +7,7 @@ import type { RegulatoryPackage } from "@/types/RegulatoryPackage";
 
 const COMPLIANCE_CHECKER_SYSTEM = `You are the Compliance Checker for Arclight Bio's regulatory assembly pipeline.
 Map evidence against FDA January 2025 draft guidance on AI in drug submissions.
+Use precise biomedical language: distinguish targets from drugs/modalities; name intervention class when describing therapies.
 Return JSON: {
   ai_role_declaration: string,
   evidence_sections: [{ section, ai_generated_items, human_validated_items, average_regulatory_weight, credibility_rating }],

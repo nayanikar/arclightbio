@@ -40,9 +40,30 @@ export interface DeriskRecommendation {
   closes_gap: string;
 }
 
+export type BlackboardAgentEventType =
+  | "agent_started"
+  | "agent_completed"
+  | "agent_failed";
+
+export interface BlackboardAgentEvent {
+  type: BlackboardAgentEventType;
+  agent: string;
+  phase?: "early" | "full";
+  error?: string;
+  at: string;
+}
+
+export interface BlackboardState {
+  completedSteps: string[];
+  pauseReason?: "user_stopped" | "surveillance";
+  lastError?: string;
+  lastEvent?: BlackboardAgentEvent;
+}
+
 export type OpportunityStatus =
   | "initialising"
   | "agents_running"
+  | "agents_failed"
   | "complete"
   | "surveillance"
   | "paused"
@@ -121,6 +142,7 @@ export interface Hypothesis {
   patient_population: string;
   unmet_need: string;
   org_positioning: string;
+  source?: "llm" | "fallback";
 }
 
 export interface OpportunityObject {
@@ -151,4 +173,5 @@ export interface OpportunityObject {
   prior_score?: number;
   domain_context?: DomainContext;
   indication_type?: IndicationType;
+  blackboard_state?: BlackboardState;
 }

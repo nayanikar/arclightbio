@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any, Dict, Optional
 
 from common import (
@@ -33,6 +34,11 @@ def top_level_space(session) -> str:
 
 def handle_session_started(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
+    session_map = load_session_map(workspace)
+    existing = session_map.get(opportunity_id)
+    if isinstance(existing, dict) and existing.get("sessionIntentId"):
+        return
+
     search_query = event.get("searchQuery") or "Discovery session"
     tier = event.get("tier")
     content = f"Discovery: {search_query}"
@@ -56,7 +62,42 @@ def handle_session_started(session, workspace, event: JsonDict) -> None:
     save_session_map(workspace, session_map)
 
 
-def get_session_entry(workspace, opportunity_id: str) -> JsonDict:
+def _bootstrap_search_query(event: Optional[JsonDict], opportunity_id: str) -> str:
+    if event and isinstance(event.get("searchQuery"), str):
+        return event["searchQuery"]
+    return f"Opportunity {opportunity_id[:8]}"
+
+
+def ensure_session_entry(
+    session,
+    workspace,
+    opportunity_id: str,
+    event: Optional[JsonDict] = None,
+) -> JsonDict:
+    """Wait for session_started to register, or bootstrap a session intent if missing."""
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        session_map = load_session_map(workspace)
+        entry = session_map.get(opportunity_id)
+        if isinstance(entry, dict) and entry.get("sessionIntentId"):
+            return entry
+        time.sleep(0.1)
+
+    session_map = load_session_map(workspace)
+    entry = session_map.get(opportunity_id)
+    if isinstance(entry, dict) and entry.get("sessionIntentId"):
+        return entry
+
+    handle_session_started(
+        session,
+        workspace,
+        {
+            "type": "session_started",
+            "opportunityId": opportunity_id,
+            "searchQuery": _bootstrap_search_query(event, opportunity_id),
+            "tier": event.get("tier") if event else None,
+        },
+    )
     session_map = load_session_map(workspace)
     entry = session_map.get(opportunity_id)
     if not isinstance(entry, dict) or not entry.get("sessionIntentId"):
@@ -67,7 +108,7 @@ def get_session_entry(workspace, opportunity_id: str) -> JsonDict:
 def handle_agent_started(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
     key = agent_key(event)
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     session_space = entry["sessionIntentId"]
 
     intent_msg = session.post_and_confirm(
@@ -103,7 +144,7 @@ def handle_agent_started(session, workspace, event: JsonDict) -> None:
 def handle_agent_completed(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
     key = agent_key(event)
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     agent_state = entry.get("agents", {}).get(key)
     if not isinstance(agent_state, dict):
         return
@@ -132,7 +173,7 @@ def handle_agent_completed(session, workspace, event: JsonDict) -> None:
 def handle_agent_failed(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
     key = agent_key(event)
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     agent_state = entry.get("agents", {}).get(key)
     if not isinstance(agent_state, dict):
         return
@@ -156,7 +197,7 @@ def handle_agent_failed(session, workspace, event: JsonDict) -> None:
 
 def handle_blackboard_completed(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     session_space = entry["sessionIntentId"]
     confidence = event.get("confidence")
     zone = event.get("zone")
@@ -178,7 +219,7 @@ def handle_blackboard_completed(session, workspace, event: JsonDict) -> None:
 
 def handle_surveillance_started(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     session_space = entry["sessionIntentId"]
 
     intent_msg = session.post(
@@ -210,7 +251,7 @@ def handle_surveillance_started(session, workspace, event: JsonDict) -> None:
 
 def handle_surveillance_completed(session, workspace, event: JsonDict) -> None:
     opportunity_id = event["opportunityId"]
-    entry = get_session_entry(workspace, opportunity_id)
+    entry = ensure_session_entry(session, workspace, opportunity_id, event)
     surv = entry.get("surveillance")
     if not isinstance(surv, dict):
         return

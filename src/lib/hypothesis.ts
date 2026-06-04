@@ -4,12 +4,14 @@ import { callAgentJson } from "@/api/anthropic";
 import type { Paper } from "@/types/api";
 import { formatOrgContextForPrompt } from "@/lib/orgContext";
 import { getHypothesisInstruction } from "@/lib/domainContext";
+import { sanitizeHypothesisFields } from "@/lib/scientificLanguage";
 
 const HYPOTHESIS_SYSTEM = `You are the hypothesis generator for Opportunity Space by Arclight Bio.
 Given a search query, organization context, and real PubMed abstracts, generate a structured hypothesis.
 Return JSON with keys: statement, patient_population, unmet_need, org_positioning.
 Ground every field in the actual evidence provided. Do not use generic placeholder text.
-The org_positioning field MUST describe strategic fit for the specified organization only — use their approved assets, pipeline, and therapeutic areas. Never reference a different company.`;
+The org_positioning field MUST describe strategic fit for the specified organization only — use their approved assets, pipeline, and therapeutic areas. Never reference a different company.
+When describing therapies, name the intervention class (e.g. TLR7 agonist, JAK inhibitor) or drug (INN/generic) — never write that a gene/target symbol alone is approved.`;
 
 export async function generateHypothesis(
   query: string,
@@ -32,7 +34,7 @@ export async function generateHypothesis(
     : "";
 
   try {
-    return await callAgentJson<OpportunityObject["hypothesis"]>(
+    const hypothesis = await callAgentJson<OpportunityObject["hypothesis"]>(
       HYPOTHESIS_SYSTEM,
       `Search query: "${query}"
 
@@ -43,13 +45,15 @@ IMPORTANT: Write org_positioning for ${org.org_name} only. Reference their portf
 PubMed abstracts:
 ${abstractSummary || "No papers found yet — generate hypothesis from query terms only."}`
     );
+    return sanitizeHypothesisFields({ ...hypothesis, source: "llm" });
   } catch {
-    return {
-      statement: `Cross-domain opportunity at the intersection of: ${query}`,
-      patient_population: `Patients relevant to ${query}`,
-      unmet_need: `Evidence gap identified through live literature search on "${query}"`,
-      org_positioning: `${org.org_name} could explore this space given portfolio alignment in ${org.portfolio.therapeutic_areas.join(", ")}`,
-    };
+    return sanitizeHypothesisFields({
+      source: "fallback",
+      statement: `[Unverified placeholder hypothesis] Preliminary cross-domain opportunity consistent with: ${query}`,
+      patient_population: `Patients with ${query}-relevant disease indications`,
+      unmet_need: `Evidence suggests an unmet need in ${query}; further validation required`,
+      org_positioning: `${org.org_name} may explore this space given portfolio alignment in ${org.portfolio.therapeutic_areas.join(", ")}`,
+    });
   }
 }
 

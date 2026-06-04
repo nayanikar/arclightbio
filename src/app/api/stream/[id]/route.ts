@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getOpportunityObject, getEvidenceCardsSince } from "@/lib/db";
+import { isBlackboardPausedMidRun } from "@/lib/blackboardRun";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,7 @@ export async function GET(
 ) {
   const encoder = new TextEncoder();
   let lastTimestamp = new Date(0).toISOString();
+  let lastAgentEventAt: string | null = null;
   let closed = false;
 
   const stream = new ReadableStream({
@@ -37,24 +39,59 @@ export async function GET(
               send("card", card);
             }
 
+            const lastEvent = obj.blackboard_state?.lastEvent;
+            if (lastEvent && lastEvent.at !== lastAgentEventAt) {
+              lastAgentEventAt = lastEvent.at;
+              send("agent_status", lastEvent);
+            }
+
             send("score", {
               confidence_score: obj.confidence_score,
               actionability_score: obj.actionability_score,
               actionability_zone: obj.actionability_zone,
               status: obj.status,
+              blackboard_error: obj.blackboard_state?.lastError,
             });
 
-            if (obj.status === "complete" || obj.status === "surveillance" || obj.status === "paused") {
+            if (obj.status === "agents_failed") {
+              send("failed", {
+                status: obj.status,
+                message:
+                  obj.blackboard_state?.lastError ??
+                  "Discovery pipeline failed after retry",
+              });
+              break;
+            }
+
+            if (obj.status === "complete" || obj.status === "surveillance") {
               send("complete", {
                 status: obj.status,
                 surveillance_tags: obj.surveillance_tags,
               });
               break;
             }
+
+            if (obj.status === "paused") {
+              if (isBlackboardPausedMidRun(obj.blackboard_state)) {
+                send("paused", {
+                  status: obj.status,
+                  phase: "agents",
+                  completedSteps: obj.blackboard_state?.completedSteps ?? [],
+                });
+              } else {
+                send("complete", {
+                  status: obj.status,
+                  phase: "surveillance",
+                  surveillance_tags: obj.surveillance_tags,
+                });
+                break;
+              }
+            }
           } catch (err) {
             send("error", {
               message: err instanceof Error ? err.message : "Stream error",
             });
+            break;
           }
 
           await new Promise((r) => setTimeout(r, 1500));

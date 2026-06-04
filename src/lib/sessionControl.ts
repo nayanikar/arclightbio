@@ -1,5 +1,9 @@
 import type { ChangeLogEntry, OpportunityObject } from "@/types/OpportunityObject";
 import { getOpportunityObject, updateOpportunityObject } from "@/lib/db";
+import {
+  isBlackboardPausedMidRun,
+  isBlackboardComplete,
+} from "@/lib/blackboardRun";
 
 const LIVE_STATUSES: OpportunityObject["status"][] = [
   "initialising",
@@ -29,30 +33,41 @@ export async function pauseOpportunity(
     return { paused: false, alreadyPaused: true };
   }
 
-  if (!isLiveOpportunity(obj.status)) {
+  if (!isLiveOpportunity(obj.status) && obj.status !== "agents_running") {
     return { paused: false, alreadyPaused: false };
   }
+
+  const pauseReason =
+    obj.status === "agents_running" ? ("user_stopped" as const) : ("surveillance" as const);
 
   const changeLogEntry: ChangeLogEntry = {
     timestamp: new Date().toISOString(),
     trigger: "user_paused",
     agents_reinitiated: [],
-    summary,
+    summary:
+      obj.status === "agents_running"
+        ? "Agent pipeline paused — progress saved"
+        : summary,
   };
 
   await updateOpportunityObject(id, {
     status: "paused",
+    blackboard_state: {
+      completedSteps: obj.blackboard_state?.completedSteps ?? [],
+      pauseReason,
+      lastEvent: obj.blackboard_state?.lastEvent,
+      lastError: obj.blackboard_state?.lastError,
+    },
     change_log: [...obj.change_log, changeLogEntry],
   });
 
   return { paused: true, alreadyPaused: false, changeLogEntry };
 }
 
-export async function resumeOpportunity(
-  id: string
-): Promise<{
+export async function resumeOpportunity(id: string): Promise<{
   resumed: boolean;
   alreadyActive: boolean;
+  needsBlackboardResume: boolean;
   changeLogEntry?: ChangeLogEntry;
 }> {
   const obj = await getOpportunityObject(id);
@@ -61,22 +76,35 @@ export async function resumeOpportunity(
   }
 
   if (obj.status !== "paused") {
-    return { resumed: false, alreadyActive: true };
+    return { resumed: false, alreadyActive: true, needsBlackboardResume: false };
   }
+
+  const needsBlackboardResume = isBlackboardPausedMidRun(obj.blackboard_state);
 
   const changeLogEntry: ChangeLogEntry = {
     timestamp: new Date().toISOString(),
     trigger: "user_resumed",
-    agents_reinitiated: [],
-    summary: "Surveillance resumed",
+    agents_reinitiated: needsBlackboardResume ? ["literature"] : [],
+    summary: needsBlackboardResume
+      ? "Agent pipeline resumed — continuing discovery"
+      : "Surveillance resumed",
   };
 
   await updateOpportunityObject(id, {
-    status: "surveillance",
+    status: needsBlackboardResume ? "agents_running" : "surveillance",
+    blackboard_state: {
+      ...(obj.blackboard_state ?? { completedSteps: [] }),
+      pauseReason: undefined,
+    },
     change_log: [...obj.change_log, changeLogEntry],
   });
 
-  return { resumed: true, alreadyActive: false, changeLogEntry };
+  return {
+    resumed: true,
+    alreadyActive: false,
+    needsBlackboardResume,
+    changeLogEntry,
+  };
 }
 
 export async function pauseAllSurveillance(): Promise<{
@@ -103,3 +131,5 @@ export async function pauseAllSurveillance(): Promise<{
 
   return { paused, skipped };
 }
+
+export { isBlackboardComplete };

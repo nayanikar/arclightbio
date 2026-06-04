@@ -9,7 +9,7 @@ import {
 } from "@/lib/db";
 import { pickDefaultOrgContext } from "@/lib/orgContext";
 import { classifyQuery } from "@/lib/queryClassifier";
-import { runBlackboard } from "@/lib/blackboard";
+import { scheduleBlackboardRun } from "@/lib/blackboard";
 import { getActionabilityZoneFromConfidence } from "@/lib/scoring";
 import type { DomainContext } from "@/types/OpportunityObject";
 
@@ -81,13 +81,12 @@ export async function POST(request: NextRequest) {
       domain_context: resolvedDomain,
     });
 
-    runBlackboard(obj.id).catch((err) =>
-      console.error("Blackboard error:", err)
-    );
+    scheduleBlackboardRun(obj.id);
 
     return NextResponse.json({
       id: obj.id,
       hypothesis,
+      hypothesis_fallback: hypothesis.source === "fallback",
       status: "initialising",
       evidence_tier: classification.tier,
       prior_score: classification.prior_score,

@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/http";
 
 const COMMERCIAL_SYSTEM = `You are the Commercial Agent for Opportunity Space by Arclight Bio.
 Assess IP landscape and commercial fit given patent data and org context.
+In content, name approved agents with drug name and mechanism (e.g. "tofacitinib, a JAK inhibitor") — never write that a target symbol alone is approved.
 Return JSON: { content: string (2-3 sentences), competitive_position: string }`;
 
 export async function commercialAgent(obj: OpportunityObject): Promise<void> {

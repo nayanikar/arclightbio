@@ -3,16 +3,18 @@
 import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
 import { useOpportunityStore } from "@/store/opportunityStore";
-import type { ChangeLogEntry, OpportunityObject } from "@/types/OpportunityObject";
+import type { ChangeLogEntry, OpportunityObject, OpportunityStatus } from "@/types/OpportunityObject";
 import { SESSIONS_UPDATED_EVENT, notifyOpportunitiesUpdated } from "@/lib/events";
 
 export function useSurveillanceSessionControls() {
   const params = useParams();
   const id = params.id as string;
-  const { status, pauseSession, resumeSession, setOpportunity, addCard } =
+  const { status, pauseSession, resumeSession, setOpportunity, addCard, setStreaming } =
     useOpportunityStore();
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [pauseError, setPauseError] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const reloadOpportunity = useCallback(async () => {
     const res = await fetch(`/api/opportunity/${id}`, { cache: "no-store" });
@@ -50,17 +52,22 @@ export function useSurveillanceSessionControls() {
   const handlePause = useCallback(async () => {
     if (pausing) return;
     setPausing(true);
+    setPauseError(null);
     try {
       const res = await fetch(`/api/opportunity/${id}/pause`, { method: "POST" });
-      if (!res.ok) return;
       const data = (await res.json()) as {
         changeLogEntry?: ChangeLogEntry;
+        error?: string;
       };
+      if (!res.ok) {
+        setPauseError(data.error ?? "Failed to pause session");
+        return;
+      }
       if (data.changeLogEntry) {
         pauseSession(data.changeLogEntry);
       }
     } catch (err) {
-      console.error("Pause failed:", err);
+      setPauseError(err instanceof Error ? err.message : "Failed to pause session");
     } finally {
       setPausing(false);
     }
@@ -69,32 +76,60 @@ export function useSurveillanceSessionControls() {
   const handleResume = useCallback(async () => {
     if (resuming || status !== "paused") return;
     setResuming(true);
+    setResumeError(null);
     try {
       const res = await fetch(`/api/opportunity/${id}/resume`, { method: "POST" });
-      if (!res.ok) return;
       const data = (await res.json()) as {
         resumed?: boolean;
+        needsBlackboardResume?: boolean;
+        status?: OpportunityStatus;
         changeLogEntry?: ChangeLogEntry;
+        error?: string;
       };
-      if (data.changeLogEntry) {
-        resumeSession(data.changeLogEntry);
-      } else if (data.resumed) {
-        resumeSession({
-          timestamp: new Date().toISOString(),
-          trigger: "user_resumed",
-          agents_reinitiated: [],
-          summary: "Surveillance resumed",
-        });
+      if (!res.ok) {
+        setResumeError(data.error ?? "Failed to resume session");
+        return;
       }
+      const nextStatus: OpportunityStatus =
+        data.status ?? (data.needsBlackboardResume ? "agents_running" : "surveillance");
+
+      if (data.changeLogEntry) {
+        resumeSession(data.changeLogEntry, nextStatus);
+      } else if (data.resumed) {
+        resumeSession(
+          {
+            timestamp: new Date().toISOString(),
+            trigger: "user_resumed",
+            agents_reinitiated: [],
+            summary: data.needsBlackboardResume
+              ? "Agent pipeline resumed"
+              : "Surveillance resumed",
+          },
+          nextStatus
+        );
+      }
+
+      if (data.needsBlackboardResume) {
+        setStreaming(true);
+      }
+
       await reloadOpportunity();
       window.dispatchEvent(new CustomEvent(SESSIONS_UPDATED_EVENT));
       notifyOpportunitiesUpdated();
     } catch (err) {
-      console.error("Resume failed:", err);
+      setResumeError(err instanceof Error ? err.message : "Failed to resume session");
     } finally {
       setResuming(false);
     }
-  }, [id, resuming, status, reloadOpportunity, resumeSession]);
+  }, [id, resuming, status, reloadOpportunity, resumeSession, setStreaming]);
 
-  return { pausing, resuming, handlePause, handleResume, reloadOpportunity };
+  return {
+    pausing,
+    resuming,
+    pauseError,
+    resumeError,
+    handlePause,
+    handleResume,
+    reloadOpportunity,
+  };
 }

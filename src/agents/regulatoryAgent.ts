@@ -18,7 +18,10 @@ import {
 const CHALLENGE_THRESHOLD = 0.65;
 const MAX_CHALLENGES = 3;
 
-const DERISK_SYSTEM = `You are a regulatory strategy expert. Return valid JSON only.`;
+const DERISK_SYSTEM = `You are a regulatory strategy expert for drug development.
+Use standard clinical trial language: Phase 1/2/3, primary endpoint, inclusion/exclusion-aligned population, biomarker names.
+Describe interventions by modality and mechanism, not bare target approval.
+Return valid JSON only.`;
 
 async function generateDeriskRecommendation(
   obj: OpportunityObject,

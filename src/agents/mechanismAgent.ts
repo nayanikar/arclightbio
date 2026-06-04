@@ -12,12 +12,15 @@ import {
   type RankedTarget,
 } from "@/lib/targetList";
 import { DOMAIN_CONTEXT_ADJUSTMENTS } from "@/lib/domainContext";
+import { filterFailed, filterOk, type FilterResult } from "@/lib/filterResult";
 
 const MECHANISM_FILTER_SYSTEM = `You are the Mechanism Agent for Opportunity Space, built by Arclight Bio.
 Review Open Targets target–disease associations for mechanistic relevance to a biomedical hypothesis.
+In relevance_reason, use gene symbols for targets and precise intervention language (inhibitor, agonist, modulator) when discussing therapeutics — never write that a target alone is approved.
 Respond with valid JSON only — a JSON array.`;
 
 const DRUGGABILITY_SYSTEM = `You are a drug discovery scientist evaluating targets for first-in-class therapeutic development.
+In rationale and recommended_modality, use standard modality terms (small molecule, monoclonal antibody, ADC, siRNA) and pair targets with intervention class.
 Return valid JSON only — a JSON array of ranked targets.`;
 
 interface FilteredAssociation {
@@ -42,7 +45,7 @@ const LOW_RELEVANCE_QUALITY = {
 async function filterRelevantAssociations(
   hypothesis: OpportunityObject["hypothesis"],
   associations: TargetDiseaseAssociation[]
-): Promise<FilteredAssociation[]> {
+): Promise<FilterResult<FilteredAssociation>> {
   const associationsJson = JSON.stringify(
     associations.map((a) => ({
       target: a.targetName,
@@ -68,9 +71,12 @@ Return as JSON array with fields: target, disease, score, relevance_reason`;
       MECHANISM_FILTER_SYSTEM,
       userPrompt
     );
-    return Array.isArray(filtered) ? filtered : [];
+    if (!Array.isArray(filtered)) {
+      return filterFailed("Mechanism relevance filter returned invalid response");
+    }
+    return filterOk(filtered);
   } catch {
-    return [];
+    return filterFailed("Mechanism relevance filter unavailable");
   }
 }
 
@@ -102,7 +108,7 @@ function fallbackRankedTargets(relevant: FilteredAssociation[]): RankedTarget[] 
       priority_rank: i + 1,
       rationale: a.relevance_reason,
       recommended_modality: "small molecule",
-      key_risk: "Requires further validation of on-target safety.",
+      key_risk: "Requires further validation of on-target safety in chronic use.",
     };
   });
 }
@@ -206,7 +212,32 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
     return;
   }
 
-  const relevant = await filterRelevantAssociations(obj.hypothesis, associations);
+  const filterResult = await filterRelevantAssociations(
+    obj.hypothesis,
+    associations
+  );
+
+  if (filterResult.status === "failed") {
+    await insertEvidenceCard(obj.id, {
+      content:
+        "Mechanism relevance filter unavailable — Open Targets associations retrieved but not validated for this hypothesis." +
+        (partial ? " [Partial search]" : ""),
+      source_url: "https://platform.opentargets.org/",
+      source_type: "opentargets",
+      contributing_agent: "mechanism",
+      quality_scores: LOW_RELEVANCE_QUALITY,
+      regulatory_weight: 0.25,
+      raw_source_metadata: {
+        targetQuery,
+        partial: true,
+        filter_failed: true,
+        associations: associations.slice(0, 15),
+      },
+    });
+    return;
+  }
+
+  const relevant = filterResult.items;
 
   if (relevant.length === 0) {
     await insertEvidenceCard(obj.id, {
@@ -228,7 +259,7 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
 
   for (const assoc of relevant.slice(0, 3)) {
     const original = findAssociation(associations, assoc);
-    const content = `${assoc.target} ↔ ${assoc.disease} (Open Targets score: ${assoc.score.toFixed(2)}): ${assoc.relevance_reason}`;
+    const content = `${assoc.target}–${assoc.disease} association (Open Targets score: ${assoc.score.toFixed(2)}): ${assoc.relevance_reason}`;
 
     const quality = {
       sample_size: Math.min(1, relevant.length / 5),

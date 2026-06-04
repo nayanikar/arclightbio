@@ -41,16 +41,27 @@ function StepIcon({ step }: { step: SurveillanceStep }) {
 interface SurveillanceRailProps {
   onResume?: () => void;
   resuming?: boolean;
+  variant?: "sidebar" | "main";
+  embedded?: boolean;
 }
 
-export function SurveillanceRail({ onResume, resuming }: SurveillanceRailProps) {
+export function SurveillanceRail({
+  onResume,
+  resuming,
+  variant = "sidebar",
+  embedded = false,
+}: SurveillanceRailProps) {
   const params = useParams();
   const opportunityId = params.id as string;
   const { status, actionabilityZone, lastSurveillanceCheck, changeLog } =
     useOpportunityStore();
+  const isMain = variant === "main";
 
   const showSurveillance =
-    status === "surveillance" || status === "complete" || status === "paused";
+    status === "surveillance" ||
+    status === "complete" ||
+    status === "paused" ||
+    (isMain && (status === "agents_running" || status === "initialising"));
 
   const surveillanceActive = status === "surveillance" || status === "complete";
   const { steps, summary, isScanning, countdown } = useSurveillanceScan(
@@ -60,32 +71,187 @@ export function SurveillanceRail({ onResume, resuming }: SurveillanceRailProps) 
   );
 
   const [expanded, setExpanded] = useState(
-    status === "surveillance" || isScanning
+    isMain || status === "surveillance" || isScanning
   );
 
   if (!showSurveillance) return null;
 
   const isPaused = status === "paused";
+  const pendingDiscovery =
+    isMain && (status === "agents_running" || status === "initialising");
   const pollSeconds = Math.floor(SURVEILLANCE_POLL_INTERVAL_MS / 1000);
-  const displaySteps = [...steps].reverse().slice(0, expanded ? undefined : 0);
+  const displaySteps = [...steps]
+    .reverse()
+    .slice(0, embedded || expanded ? undefined : 0);
   const lastScanLabel = formatLastChecked(lastSurveillanceCheck).replace(
     "Last checked:",
     "Last scan:"
   );
 
-  const statusChip = isPaused ? (
-    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/50">
+  const statusChip = pendingDiscovery ? (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 font-medium",
+        isMain ? "bg-gray-100 text-xs text-gray-500" : "bg-white/10 text-[10px] text-white/50"
+      )}
+    >
+      Pending
+    </span>
+  ) : isPaused ? (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5",
+        isMain ? "bg-gray-100 text-xs text-gray-500" : "bg-white/10 text-[10px] text-white/50"
+      )}
+    >
       Paused
     </span>
   ) : isScanning ? (
-    <span className="inline-flex items-center gap-1 rounded-full bg-brand-amber/20 px-2 py-0.5 text-[10px] text-brand-amber animate-pulse">
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium animate-pulse",
+        isMain
+          ? "bg-brand-amber/15 text-xs text-brand-amber"
+          : "bg-brand-amber/20 text-[10px] text-brand-amber"
+      )}
+    >
       Scanning
     </span>
   ) : (
-    <span className="rounded-full bg-brand-teal/20 px-2 py-0.5 text-[10px] text-brand-teal">
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 font-medium",
+        isMain ? "bg-brand-teal/10 text-xs text-brand-teal" : "bg-brand-teal/20 text-[10px] text-brand-teal"
+      )}
+    >
       Watching
     </span>
   );
+
+  const trailBody = (
+    <>
+      {pendingDiscovery && (
+        <p className={cn("py-6 text-center", isMain ? "px-5 text-sm text-gray-400" : "text-[10px] text-white/30")}>
+          Surveillance begins when the blackboard pipeline completes.
+        </p>
+      )}
+
+      {!pendingDiscovery && isPaused && (
+        <div
+          className={cn(
+            "mb-3 rounded-lg px-3 py-2 text-xs text-brand-amber",
+            isMain ? "mx-5 bg-brand-amber/10" : "rounded-md bg-brand-amber/10 px-2 py-1.5 text-[10px]"
+          )}
+        >
+          Paused ·{" "}
+          <button
+            type="button"
+            onClick={onResume}
+            disabled={resuming}
+            className="underline underline-offset-2"
+          >
+            {resuming ? "Resuming…" : "Resume"}
+          </button>
+        </div>
+      )}
+
+      {!pendingDiscovery && (
+        <>
+          <p className={cn("mb-3", isMain ? "px-5 text-xs text-gray-400" : "mb-2 text-[10px] text-white/30")}>
+            {lastScanLabel}
+          </p>
+
+          {displaySteps.length === 0 && !isScanning && (
+            <p
+              className={cn(
+                "py-6 text-center",
+                isMain ? "px-5 text-sm text-gray-400" : "text-[10px] text-white/30"
+              )}
+            >
+              {isPaused ? "Surveillance paused." : "Waiting for next scan…"}
+            </p>
+          )}
+
+          <div className={cn("space-y-2", isMain ? "px-5 pb-2" : "space-y-1")}>
+            {displaySteps.map((step) => (
+              <div key={step.id} className="flex items-start gap-2.5 py-1">
+                <StepIcon step={step} />
+                <p
+                  className={cn(
+                    "leading-relaxed",
+                    isMain ? "text-sm" : "text-[10px] leading-relaxed",
+                    step.positive && (isMain ? "text-brand-teal" : "text-brand-teal"),
+                    step.muted && !step.positive && (isMain ? "text-gray-400" : "text-white/30"),
+                    !step.muted && !step.positive && (isMain ? "text-gray-600" : "text-white/60")
+                  )}
+                >
+                  {step.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {summary && (
+            <p
+              className={cn(
+                "mt-3 border-t pt-3",
+                isMain ? "mx-5 border-[#EDE8E0] text-sm" : "mt-2 border-white/5 text-[10px]",
+                summary.positive ? "text-brand-teal" : isMain ? "text-gray-400" : "text-white/30"
+              )}
+            >
+              {summary.message}
+              {summary.positive &&
+                summary.newCardIds.map((cardId, i) => (
+                  <Link
+                    key={cardId}
+                    href={`#card-${cardId}`}
+                    className="ml-1 underline underline-offset-2"
+                  >
+                    {i > 0 ? " · " : ""}View
+                  </Link>
+                ))}
+            </p>
+          )}
+
+          {!isPaused && (
+            <p className={cn("mt-3", isMain ? "px-5 text-xs text-gray-400" : "mt-2 text-[10px] text-white/25")}>
+              Every {pollSeconds}s · Next {isScanning ? "…" : `${countdown}s`} ·{" "}
+              {ZONE_LABELS[actionabilityZone]}
+            </p>
+          )}
+
+          {changeLog.length > 0 && (
+            <p className={cn("mt-2", isMain ? "px-5 pb-4 text-xs text-gray-400" : "text-[10px] text-white/25")}>
+              {changeLog.length} change log entr{changeLog.length === 1 ? "y" : "ies"}
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div>
+        <div
+          className={cn(
+            "flex items-center justify-between border-b px-5 py-2.5",
+            isMain ? "border-[#EDE8E0] bg-gray-50/40" : "border-white/10"
+          )}
+        >
+          <p className={cn(isMain ? "text-xs text-gray-500" : "text-[10px] text-white/30")}>
+            {pendingDiscovery
+              ? "Awaiting discovery"
+              : isScanning
+                ? "Scan in progress"
+                : `Next scan in ${countdown}s`}
+          </p>
+          {statusChip}
+        </div>
+        {trailBody}
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0 border-t border-white/10">
@@ -120,78 +286,7 @@ export function SurveillanceRail({ onResume, resuming }: SurveillanceRailProps) 
 
       {expanded && (
         <div className="max-h-[240px] overflow-y-auto border-t border-white/5 px-3 py-2">
-          {isPaused && (
-            <div className="mb-2 rounded-md bg-brand-amber/10 px-2 py-1.5 text-[10px] text-brand-amber">
-              Paused ·{" "}
-              <button
-                type="button"
-                onClick={onResume}
-                disabled={resuming}
-                className="underline underline-offset-2"
-              >
-                {resuming ? "Resuming…" : "Resume"}
-              </button>
-            </div>
-          )}
-
-          <p className="mb-2 text-[10px] text-white/30">{lastScanLabel}</p>
-
-          {displaySteps.length === 0 && !isScanning && (
-            <p className="py-4 text-center text-[10px] text-white/30">
-              {isPaused ? "Surveillance paused." : "Waiting for next scan…"}
-            </p>
-          )}
-
-          <div className="space-y-1">
-            {displaySteps.map((step) => (
-              <div key={step.id} className="flex items-start gap-2 py-1">
-                <StepIcon step={step} />
-                <p
-                  className={cn(
-                    "text-[10px] leading-relaxed",
-                    step.positive && "text-brand-teal",
-                    step.muted && !step.positive && "text-white/30",
-                    !step.muted && !step.positive && "text-white/60"
-                  )}
-                >
-                  {step.description}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {summary && (
-            <p
-              className={cn(
-                "mt-2 border-t border-white/5 pt-2 text-[10px]",
-                summary.positive ? "text-brand-teal" : "text-white/30"
-              )}
-            >
-              {summary.message}
-              {summary.positive &&
-                summary.newCardIds.map((cardId, i) => (
-                  <Link
-                    key={cardId}
-                    href={`#card-${cardId}`}
-                    className="ml-1 underline underline-offset-2"
-                  >
-                    {i > 0 ? " · " : ""}View
-                  </Link>
-                ))}
-            </p>
-          )}
-
-          {!isPaused && (
-            <p className="mt-2 text-[10px] text-white/25">
-              Every {pollSeconds}s · Next {isScanning ? "…" : `${countdown}s`}
-            </p>
-          )}
-
-          {changeLog.length > 0 && (
-            <p className="mt-2 text-[10px] text-white/25">
-              {changeLog.length} change log entr{changeLog.length === 1 ? "y" : "ies"}
-            </p>
-          )}
+          {trailBody}
         </div>
       )}
     </div>

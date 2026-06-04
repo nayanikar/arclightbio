@@ -16,13 +16,15 @@ import {
   parseRankedTargetsFromCard,
   type RankedTarget,
 } from "@/lib/targetList";
+import { filterFailed, filterOk, type FilterResult } from "@/lib/filterResult";
 
 const TRIAL_TERMS_SYSTEM = `You are the Clinical Trial Agent for Opportunity Space, built by Arclight Bio.
 Generate ClinicalTrials.gov search terms for a biomedical hypothesis.
 Respond with valid JSON only — a JSON array of strings.`;
 
 const TRIAL_RELEVANCE_SYSTEM = `You are a relevance filter for a biomedical discovery system built by Arclight Bio.
-Return valid JSON only — a JSON array of relevant clinical trials.`;
+Return valid JSON only — a JSON array of relevant clinical trials.
+Trials should be described by intervention class and indication, not bare target approval.`;
 
 interface FilteredTrial {
   nctId: string;
@@ -75,8 +77,8 @@ export function computeClinicalTrialCardScore(
 export async function filterRelevantTrials(
   trials: Trial[],
   hypothesis: OpportunityObject["hypothesis"]
-): Promise<Trial[]> {
-  if (trials.length === 0) return [];
+): Promise<FilterResult<Trial>> {
+  if (trials.length === 0) return filterOk([]);
 
   const trialsJson = JSON.stringify(
     trials.map((trial) => ({
@@ -107,14 +109,19 @@ Return only trials directly relevant to this specific hypothesis. Return as JSON
       TRIAL_RELEVANCE_SYSTEM,
       userPrompt
     );
-    if (!Array.isArray(filtered) || filtered.length === 0) return [];
+    if (!Array.isArray(filtered)) {
+      return filterFailed("Trial relevance filter returned invalid response");
+    }
+    if (filtered.length === 0) return filterOk([]);
 
     const relevantIds = new Set(
       filtered.map((trial) => trial.nctId.toUpperCase())
     );
-    return trials.filter((trial) => relevantIds.has(trial.nctId.toUpperCase()));
+    return filterOk(
+      trials.filter((trial) => relevantIds.has(trial.nctId.toUpperCase()))
+    );
   } catch {
-    return [];
+    return filterFailed("Trial relevance filter unavailable");
   }
 }
 
@@ -176,6 +183,9 @@ interface NoveltyVerdict {
 }
 
 const NOVELTY_SYSTEM = `You are a first-in-class assessment expert for drug discovery.
+First-in-class means no approved drug with the same mechanism-in-indication; cite prior art as drug names or trial titles, not bare target symbols.
+Use hedged language in novelty_statement (e.g. "evidence suggests", "consistent with") unless API data confirm absence of prior art.
+In novelty_statement, specify intervention class (e.g. TLR7 agonist) not target approval alone.
 Return valid JSON only.`;
 
 async function firstInClassNoveltyCheck(
@@ -197,6 +207,10 @@ async function firstInClassNoveltyCheck(
       searchPatents(`${target.target_name} ${indication}`, 5),
     ]);
 
+    const fdaOk = fdaResult.status === "fulfilled";
+    const trialsOk = trialResult.status === "fulfilled";
+    const patentsOk = patentResult.status === "fulfilled";
+
     const fdaApprovals =
       fdaResult.status === "fulfilled" ? fdaResult.value : [];
     const activeTrials =
@@ -207,6 +221,8 @@ async function firstInClassNoveltyCheck(
     const recruitingTrials = activeTrials.filter((t) =>
       /RECRUITING|ACTIVE|NOT_YET_RECRUITING/i.test(t.status)
     );
+
+    const allSourcesOk = fdaOk && trialsOk && patentsOk;
 
     try {
       const verdict = await callAgentJson<NoveltyVerdict>(
@@ -229,19 +245,35 @@ Return:
       );
       verdicts.push({ ...verdict, target: gene });
     } catch {
-      verdicts.push({
-        is_first_in_class: recruitingTrials.length === 0 && fdaApprovals.length === 0,
-        confidence: 0.5,
-        verdict:
-          recruitingTrials.length > 2 ? "not_first_in_class" : "uncertain",
-        prior_art_found: [
-          ...fdaApprovals.map((a) => a.brandName),
-          ...recruitingTrials.slice(0, 2).map((t) => t.title),
-        ],
-        differentiation_angle: "Further differentiation analysis required.",
-        novelty_statement: `${gene} in ${indication}: automated partial assessment.`,
-        target: gene,
-      });
+      if (!allSourcesOk) {
+        verdicts.push({
+          is_first_in_class: false,
+          confidence: 0.2,
+          verdict: "uncertain",
+          prior_art_found: [
+            ...fdaApprovals.map((a) => a.brandName),
+            ...recruitingTrials.slice(0, 2).map((t) => t.title),
+          ],
+          differentiation_angle: "Further differentiation analysis required.",
+          novelty_statement: `${gene} in ${indication}: Novelty assessment incomplete — prior-art search unavailable.`,
+          target: gene,
+        });
+      } else {
+        verdicts.push({
+          is_first_in_class:
+            recruitingTrials.length === 0 && fdaApprovals.length === 0,
+          confidence: 0.5,
+          verdict:
+            recruitingTrials.length > 2 ? "not_first_in_class" : "uncertain",
+          prior_art_found: [
+            ...fdaApprovals.map((a) => a.brandName),
+            ...recruitingTrials.slice(0, 2).map((t) => t.title),
+          ],
+          differentiation_angle: "Further differentiation analysis required.",
+          novelty_statement: `${gene} in ${indication}: automated partial assessment.`,
+          target: gene,
+        });
+      }
     }
   }
 
@@ -250,10 +282,10 @@ Return:
 
 function formatNoveltyVerdict(verdicts: NoveltyVerdict[]): string {
   return verdicts
-    .map(
-      (v) =>
-        `${v.target}: First-in-class ${v.verdict.toUpperCase()} (confidence ${(v.confidence * 100).toFixed(0)}%) — ${v.novelty_statement}${v.prior_art_found.length ? ` Prior art: ${v.prior_art_found.slice(0, 2).join("; ")}.` : ""}`
-    )
+    .map((v) => {
+      const verdictLabel = v.verdict.replace(/_/g, " ");
+      return `${v.target}: first-in-class assessment — ${verdictLabel} (confidence ${(v.confidence * 100).toFixed(0)}%) — ${v.novelty_statement}${v.prior_art_found.length ? ` Prior art: ${v.prior_art_found.slice(0, 2).join("; ")}.` : ""}`;
+    })
     .join("\n");
 }
 
@@ -279,7 +311,10 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
     }
   }
 
-  const relevantTrials = await filterRelevantTrials(trials, obj.hypothesis);
+  const trialFilterResult = await filterRelevantTrials(trials, obj.hypothesis);
+  const trialFilterFailed = trialFilterResult.status === "failed";
+  const relevantTrials =
+    trialFilterResult.status === "ok" ? trialFilterResult.items : [];
   const primaryCondition = searchTerms[0] ?? obj.search_query ?? "";
 
   let paperCount = 0;
@@ -294,7 +329,8 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
   }
 
   const ratio = trialCount > 0 ? paperCount / trialCount : paperCount;
-  const gapFlag = ratio > 10 && paperCount > 20;
+  const gapFlag =
+    !trialFilterFailed && ratio > 10 && paperCount > 20 && relevantTrials.length > 0;
 
   const trialSummary = relevantTrials
     .slice(0, 8)
@@ -312,8 +348,9 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
   const phaseScore = highestTrialPhaseScore(relevantTrials);
   const cardScore = computeClinicalTrialCardScore(relevantTrials);
 
-  const content =
-    relevantTrials.length === 0
+  const content = trialFilterFailed
+    ? `Trial relevance filter unavailable — ${trials.length} trials retrieved across ${searchTerms.length} search terms, relevance not assessed.`
+    : relevantTrials.length === 0
       ? `Clinical trial landscape: ${trials.length} trials retrieved across ${searchTerms.length} search terms, but none matched this specific hypothesis after relevance filtering — early-stage signal.`
       : gapFlag
         ? `Clinical trial gap detected: ${paperCount} papers vs ${trialCount} broad trials (ratio ${ratio.toFixed(1)}:1). ${relevantTrials.length} hypothesis-relevant trial${relevantTrials.length === 1 ? "" : "s"} (${recruitingCount} recruiting).`
@@ -329,7 +366,11 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
   };
 
   await insertEvidenceCard(obj.id, {
-    content: content + (partial ? " [Partial search — some sources unavailable]" : ""),
+    content:
+      content +
+      (partial || trialFilterFailed
+        ? " [Partial search — some sources unavailable]"
+        : ""),
     source_url:
       relevantTrials[0]?.source_url ??
       trials[0]?.source_url ??
@@ -354,7 +395,8 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
       trialCount,
       ratio,
       gapFlag,
-      partial,
+      partial: partial || trialFilterFailed,
+      filter_failed: trialFilterFailed,
     },
   });
 
@@ -368,6 +410,9 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
       const avgConfidence =
         noveltyVerdicts.reduce((s, v) => s + v.confidence, 0) /
         noveltyVerdicts.length;
+      const noveltyAssessmentFailed = noveltyVerdicts.some((v) =>
+        v.novelty_statement.includes("prior-art search unavailable")
+      );
 
       await insertEvidenceCard(obj.id, {
         content: `FIRST-IN-CLASS NOVELTY CHECK\n${formatNoveltyVerdict(noveltyVerdicts)}`,
@@ -386,7 +431,8 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
         regulatory_weight: avgConfidence,
         raw_source_metadata: {
           novelty_verdicts: noveltyVerdicts,
-          partial,
+          partial: partial || noveltyAssessmentFailed,
+          novelty_assessment_failed: noveltyAssessmentFailed,
         },
       });
     }

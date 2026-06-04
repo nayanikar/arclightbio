@@ -6,25 +6,15 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExternalLink, LayoutDashboard, Search } from "lucide-react";
-import { OpportunitySidebarRail } from "@/components/opportunity/OpportunitySidebarRail";
-import { useSurveillanceSessionControls } from "@/hooks/useSurveillanceSessionControls";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Search },
 ];
 
-const OPPORTUNITY_PATH = /^\/opportunity\/[^/]+$/;
-
-function OpportunitySidebarRailSlot() {
-  const { handleResume, resuming } = useSurveillanceSessionControls();
-  return <OpportunitySidebarRail onResume={handleResume} resuming={resuming} />;
-}
-
 export function Sidebar() {
   const pathname = usePathname();
   const [observatoryUrl, setObservatoryUrl] = useState<string | null>(null);
-  const isOpportunityPage = OPPORTUNITY_PATH.test(pathname ?? "");
 
   useEffect(() => {
     fetch("/api/spacebase/observatory")
@@ -37,10 +27,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r text-white",
-        isOpportunityPage ? "w-[280px]" : "w-[220px]"
-      )}
+      className="sticky top-0 flex h-screen w-[220px] shrink-0 flex-col border-r text-white"
       style={{
         background: "linear-gradient(180deg, #1A1528 0%, #12101C 100%)",
         borderColor: "rgba(83, 74, 183, 0.15)",
@@ -95,13 +82,7 @@ export function Sidebar() {
         ) : null}
       </nav>
 
-      {isOpportunityPage && (
-        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
-          <OpportunitySidebarRailSlot />
-        </div>
-      )}
-
-      <div className="shrink-0 border-t border-white/10 px-5 py-4">
+      <div className="mt-auto shrink-0 border-t border-white/10 px-5 py-4">
         <p className="text-[10px] uppercase tracking-wider text-white/35">
           Living Discovery Engine
         </p>

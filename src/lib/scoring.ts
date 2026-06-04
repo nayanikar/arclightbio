@@ -82,7 +82,7 @@ export function computeConfidenceScore(
 
   const challengePenalty = Math.min(
     0.2,
-    challenges.reduce((sum, c) => sum + Math.abs(c.score_impact / 100), 0)
+    challenges.reduce((sum, c) => sum + Math.abs(c.score_impact), 0)
   );
 
   const relevantTrialCount = getRelevantTrialCount(cards);

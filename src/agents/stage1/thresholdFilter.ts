@@ -2,7 +2,7 @@ import { searchPubMed } from "@/api/pubmed";
 import { getAdverseEvents } from "@/api/openFda";
 import { createOpportunityObject } from "@/lib/db";
 import { generateHypothesis } from "@/lib/hypothesis";
-import { runBlackboard } from "@/lib/blackboard";
+import { scheduleBlackboardRun } from "@/lib/blackboard";
 import { DEFAULT_ORG_CONTEXTS } from "@/lib/db";
 
 export async function patternScanner(
@@ -68,6 +68,6 @@ export async function thresholdFilter(
     mode: "speed",
   });
 
-  runBlackboard(obj.id).catch(console.error);
+  scheduleBlackboardRun(obj.id);
   return obj.id;
 }

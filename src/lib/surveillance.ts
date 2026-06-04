@@ -60,7 +60,8 @@ function extractNctId(sourceUrl: string, metadata: Record<string, unknown>): str
 }
 
 const SURVEILLANCE_RELEVANCE_SYSTEM = `You are a relevance filter for a biomedical discovery system built by Arclight Bio.
-Return valid JSON only — a JSON array of relevant papers.`;
+Return valid JSON only — a JSON array of relevant papers.
+When summarizing relevance, use intervention-class nouns (agonist, inhibitor) rather than bare target approval claims.`;
 
 interface FilteredSurveillancePaper {
   pmid: string;

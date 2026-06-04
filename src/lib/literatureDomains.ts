@@ -108,6 +108,7 @@ function fallbackDomains(
 }
 
 const CROSS_CITATION_SYSTEM = `You are a cross-domain biomedical discovery analyst.
+In claim and mechanism fields, use precise pharmacology language: intervention class + target, hedged inferential claims.
 Return valid JSON only — a JSON array of cross-domain connections.`;
 
 export async function detectCrossDomainConnections(
