@@ -6,6 +6,7 @@ import type {
   OpportunityObject,
   ActionabilityZone,
   OpportunityStatus,
+  AgentName,
 } from "@/types/OpportunityObject";
 import type { SurveillanceScanResult } from "@/lib/surveillance";
 import { notifyOpportunitiesUpdated } from "@/lib/events";
@@ -22,6 +23,7 @@ interface OpportunityState {
   actionabilityZone: ActionabilityZone;
   status: OpportunityStatus;
   isStreaming: boolean;
+  selectedAgent: AgentName | null;
 
   setOpportunity: (obj: OpportunityObject) => void;
   addCard: (card: EvidenceCard) => void;
@@ -35,6 +37,7 @@ interface OpportunityState {
   pauseSession: (entry: ChangeLogEntry) => void;
   resumeSession: (entry: ChangeLogEntry) => void;
   setStreaming: (streaming: boolean) => void;
+  setSelectedAgent: (agent: AgentName | null) => void;
   reset: () => void;
 }
 
@@ -48,6 +51,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
   actionabilityZone: "too_early",
   status: "initialising",
   isStreaming: false,
+  selectedAgent: null,
 
   setOpportunity: (obj) => {
     persistOpportunitySnapshot(obj);
@@ -206,6 +210,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
   },
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),
+  setSelectedAgent: (agent) => set({ selectedAgent: agent }),
   reset: () =>
     set({
       opportunity: null,
@@ -217,5 +222,6 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       actionabilityZone: "too_early",
       status: "initialising",
       isStreaming: false,
+      selectedAgent: null,
     }),
 }));

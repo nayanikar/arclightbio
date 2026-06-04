@@ -6,10 +6,19 @@ import { insertEvidenceCard } from "@/lib/db";
 import { computeCompositeQuality } from "@/lib/scoring";
 import { extractKeywords } from "@/lib/hypothesis";
 import { ApiError } from "@/lib/http";
+import {
+  computeDruggabilityComposite,
+  formatTargetList,
+  type RankedTarget,
+} from "@/lib/targetList";
+import { DOMAIN_CONTEXT_ADJUSTMENTS } from "@/lib/domainContext";
 
 const MECHANISM_FILTER_SYSTEM = `You are the Mechanism Agent for Opportunity Space, built by Arclight Bio.
 Review Open Targets target–disease associations for mechanistic relevance to a biomedical hypothesis.
 Respond with valid JSON only — a JSON array.`;
+
+const DRUGGABILITY_SYSTEM = `You are a drug discovery scientist evaluating targets for first-in-class therapeutic development.
+Return valid JSON only — a JSON array of ranked targets.`;
 
 interface FilteredAssociation {
   target: string;
@@ -77,6 +86,87 @@ function findAssociation(
   );
 }
 
+function fallbackRankedTargets(relevant: FilteredAssociation[]): RankedTarget[] {
+  return relevant.slice(0, 5).map((a, i) => {
+    const scores = {
+      structural_druggability: Math.min(0.9, 0.4 + a.score * 0.5),
+      pathway_confidence: Math.min(0.95, a.score),
+      clinical_novelty: 0.6,
+      safety_precedent: 0.55,
+    };
+    return {
+      target_name: a.target,
+      gene_symbol: a.target.split(" ")[0] ?? a.target,
+      ...scores,
+      druggability_composite: computeDruggabilityComposite(scores),
+      priority_rank: i + 1,
+      rationale: a.relevance_reason,
+      recommended_modality: "small molecule",
+      key_risk: "Requires further validation of on-target safety.",
+    };
+  });
+}
+
+async function scoreDruggability(
+  obj: OpportunityObject,
+  relevant: FilteredAssociation[]
+): Promise<RankedTarget[]> {
+  const domainContext = obj.domain_context ?? "general";
+  const adjustments = DOMAIN_CONTEXT_ADJUSTMENTS[domainContext];
+  const targetsJson = JSON.stringify(
+    relevant.map((a) => ({
+      target_name: a.target,
+      disease: a.disease,
+      association_score: a.score,
+      relevance: a.relevance_reason,
+    }))
+  );
+
+  const prompt = `For each target below, score druggability across four dimensions (0-1):
+
+1. structural_druggability: binding pocket / prior drugging
+2. pathway_confidence: validation in disease mechanism
+3. clinical_novelty: absence of IND/patents in this indication (1.0 = no prior art)
+4. safety_precedent: safety track record of modulating target
+
+Targets: ${targetsJson}
+Indication context: ${obj.hypothesis.patient_population}
+Domain context: ${domainContext}
+${adjustments?.target_filter ? `Target filter: ${adjustments.target_filter}` : ""}
+
+Return ranked list, highest druggability_composite first:
+[{
+  "target_name": string,
+  "gene_symbol": string,
+  "structural_druggability": number,
+  "pathway_confidence": number,
+  "clinical_novelty": number,
+  "safety_precedent": number,
+  "druggability_composite": number,
+  "priority_rank": integer,
+  "rationale": string,
+  "recommended_modality": string,
+  "key_risk": string
+}]`;
+
+  try {
+    const ranked = await callAgentJson<RankedTarget[]>(DRUGGABILITY_SYSTEM, prompt);
+    if (!Array.isArray(ranked) || ranked.length === 0) {
+      return fallbackRankedTargets(relevant);
+    }
+    return ranked
+      .map((t, i) => ({
+        ...t,
+        priority_rank: t.priority_rank ?? i + 1,
+        druggability_composite:
+          t.druggability_composite ?? computeDruggabilityComposite(t),
+      }))
+      .sort((a, b) => a.priority_rank - b.priority_rank);
+  } catch {
+    return fallbackRankedTargets(relevant);
+  }
+}
+
 export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
   const { targets, conditions } = extractKeywords(
     obj.search_query ?? "",
@@ -136,7 +226,7 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
     return;
   }
 
-  for (const assoc of relevant) {
+  for (const assoc of relevant.slice(0, 3)) {
     const original = findAssociation(associations, assoc);
     const content = `${assoc.target} ↔ ${assoc.disease} (Open Targets score: ${assoc.score.toFixed(2)}): ${assoc.relevance_reason}`;
 
@@ -162,6 +252,35 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
         association: assoc,
         originalAssociation: original,
         partial,
+      },
+    });
+  }
+
+  const rankedTargets = await scoreDruggability(obj, relevant);
+  if (rankedTargets.length > 0) {
+    const topTarget = rankedTargets[0];
+    const composite = topTarget.druggability_composite;
+
+    await insertEvidenceCard(obj.id, {
+      content: formatTargetList(rankedTargets),
+      source_url: "https://platform.opentargets.org/",
+      source_type: "opentargets",
+      contributing_agent: "mechanism",
+      is_target_list: true,
+      quality_scores: {
+        sample_size: 0.7,
+        study_design: 0.75,
+        source_credibility: 0.85,
+        replication: 0.6,
+        recency: 0.8,
+        composite,
+      },
+      regulatory_weight: composite,
+      raw_source_metadata: {
+        ranked_targets: rankedTargets,
+        targetQuery,
+        partial,
+        domain_context: obj.domain_context,
       },
     });
   }

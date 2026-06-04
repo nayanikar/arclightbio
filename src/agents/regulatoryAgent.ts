@@ -1,5 +1,6 @@
 import type {
   AgentName,
+  DeriskRecommendation,
   EvidenceCard,
   OpportunityObject,
   QualityScores,
@@ -7,6 +8,8 @@ import type {
 import { getAllEvidenceCards, getChallengeCount, insertEvidenceCard } from "@/lib/db";
 import { refreshScores } from "@/lib/blackboard";
 import { computeCompositeQuality } from "@/lib/scoring";
+import { callAgentJson } from "@/api/anthropic";
+import { getIndicationRiskWeights } from "@/lib/indicationRisk";
 import {
   detectSampleSize as scoreSampleSizeFromContent,
   detectStudyDesign as scoreStudyDesignFromContent,
@@ -14,6 +17,42 @@ import {
 
 const CHALLENGE_THRESHOLD = 0.65;
 const MAX_CHALLENGES = 3;
+
+const DERISK_SYSTEM = `You are a regulatory strategy expert. Return valid JSON only.`;
+
+async function generateDeriskRecommendation(
+  obj: OpportunityObject,
+  gapContent: string
+): Promise<DeriskRecommendation | null> {
+  const weights = getIndicationRiskWeights(obj.indication_type);
+  try {
+    return await callAgentJson<DeriskRecommendation>(
+      DERISK_SYSTEM,
+      `A gap has been identified in the evidence for this hypothesis:
+
+Hypothesis: ${obj.hypothesis.statement}
+Gap: ${gapContent}
+Indication type: ${obj.indication_type ?? "oncology"}
+Safety weight: ${weights.safety_weight}, Efficacy weight: ${weights.efficacy_weight}
+
+Generate a specific de-risking study recommendation:
+{
+  "study_type": string,
+  "primary_objective": string,
+  "patient_population": string,
+  "n_required": integer,
+  "primary_endpoint": string,
+  "biomarkers_of_efficacy": string[],
+  "biomarkers_of_safety": string[],
+  "estimated_timeline": string,
+  "estimated_cost_range": string,
+  "closes_gap": string
+}`
+    );
+  } catch {
+    return null;
+  }
+}
 
 function extractSampleSize(metadata: Record<string, unknown>): number | null {
   if (typeof metadata.sample_size === "number") return metadata.sample_size;
@@ -262,6 +301,8 @@ async function postChallenge(
   const count = await getChallengeCount(obj.id);
   if (count >= MAX_CHALLENGES) return;
 
+  const derisk = await generateDeriskRecommendation(obj, challenge.content);
+
   await insertEvidenceCard(obj.id, {
     content: challenge.content,
     source_url: card.source_url,
@@ -280,6 +321,7 @@ async function postChallenge(
       score_impact: challenge.score_impact,
       dimension: challenge.dimension,
     },
+    derisk_recommendation: derisk ?? undefined,
   });
 }
 

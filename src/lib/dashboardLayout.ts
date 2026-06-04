@@ -12,6 +12,7 @@ export const AGENT_PIP_COLORS: Record<AgentName, string> = {
   regulatory: "#D85A30",
   commercial: "#BA7517",
   rwe_signal: "#639922",
+  modality: "#8B5CF6",
 };
 
 export interface DashboardMetrics {

@@ -13,7 +13,9 @@ export function buildProvenanceTrail(
   return cards
     .filter((c) => !c.is_challenge)
     .map((card) => ({
-      claim: card.content.slice(0, 200),
+      claim: card.is_cross_domain
+        ? `[CROSS-DOMAIN] ${card.content.slice(0, 180)}`
+        : card.content.slice(0, 200),
       source_chain: [card.source_url].filter(Boolean),
       retrieval_method: `Live API fetch via ${card.source_type}`,
       agent: card.contributing_agent as AgentName,

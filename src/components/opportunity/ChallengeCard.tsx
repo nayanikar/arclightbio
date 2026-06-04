@@ -2,14 +2,21 @@
 
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
+import type { DeriskRecommendation } from "@/types/OpportunityObject";
 
 interface ChallengeCardProps {
   content: string;
   scoreImpact?: number;
+  deriskRecommendation?: DeriskRecommendation;
   className?: string;
 }
 
-export function ChallengeCard({ content, scoreImpact, className }: ChallengeCardProps) {
+export function ChallengeCard({
+  content,
+  scoreImpact,
+  deriskRecommendation,
+  className,
+}: ChallengeCardProps) {
   return (
     <article
       className={cn(
@@ -30,6 +37,39 @@ export function ChallengeCard({ content, scoreImpact, className }: ChallengeCard
         )}
       </div>
       <p className="text-sm leading-relaxed text-gray-800">{content}</p>
+      {deriskRecommendation && (
+        <div className="mt-3 rounded-md border border-brand-teal/20 bg-brand-teal/[0.04] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-teal">
+            De-risking recommendation
+          </p>
+          <dl className="mt-2 space-y-1 text-xs text-gray-700">
+            <div>
+              <dt className="inline font-medium">Study: </dt>
+              <dd className="inline">{deriskRecommendation.study_type}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Objective: </dt>
+              <dd className="inline">{deriskRecommendation.primary_objective}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Population: </dt>
+              <dd className="inline">{deriskRecommendation.patient_population}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">N≥: </dt>
+              <dd className="inline">{deriskRecommendation.n_required}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Endpoint: </dt>
+              <dd className="inline">{deriskRecommendation.primary_endpoint}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Timeline: </dt>
+              <dd className="inline">{deriskRecommendation.estimated_timeline}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
     </article>
   );
 }

@@ -6,9 +6,16 @@ import {
 } from "@/api/clinicalTrials";
 import type { Trial } from "@/types/api";
 import { getPubMedCount } from "@/api/pubmed";
-import { insertEvidenceCard } from "@/lib/db";
+import { insertEvidenceCard, getAllEvidenceCards } from "@/lib/db";
 import { extractKeywords } from "@/lib/hypothesis";
 import { ApiError } from "@/lib/http";
+import { searchFDAApprovals } from "@/api/openFda";
+import { searchPatents } from "@/api/lens";
+import {
+  findTargetListCard,
+  parseRankedTargetsFromCard,
+  type RankedTarget,
+} from "@/lib/targetList";
 
 const TRIAL_TERMS_SYSTEM = `You are the Clinical Trial Agent for Opportunity Space, built by Arclight Bio.
 Generate ClinicalTrials.gov search terms for a biomedical hypothesis.
@@ -158,6 +165,98 @@ function dedupeTrials(trials: Trial[]): Trial[] {
   return Array.from(byNct.values());
 }
 
+interface NoveltyVerdict {
+  is_first_in_class: boolean;
+  confidence: number;
+  verdict: "confirmed" | "likely" | "uncertain" | "not_first_in_class";
+  prior_art_found: string[];
+  differentiation_angle: string;
+  novelty_statement: string;
+  target?: string;
+}
+
+const NOVELTY_SYSTEM = `You are a first-in-class assessment expert for drug discovery.
+Return valid JSON only.`;
+
+async function firstInClassNoveltyCheck(
+  obj: OpportunityObject,
+  targets: RankedTarget[]
+): Promise<NoveltyVerdict[]> {
+  if (targets.length === 0) return [];
+
+  const topTargets = targets.slice(0, 3);
+  const verdicts: NoveltyVerdict[] = [];
+
+  for (const target of topTargets) {
+    const gene = target.gene_symbol;
+    const indication = obj.hypothesis.patient_population;
+
+    const [fdaResult, trialResult, patentResult] = await Promise.allSettled([
+      searchFDAApprovals(gene, indication),
+      searchTrialsByTerm(`${gene} ${indication}`, 10, false),
+      searchPatents(`${target.target_name} ${indication}`, 5),
+    ]);
+
+    const fdaApprovals =
+      fdaResult.status === "fulfilled" ? fdaResult.value : [];
+    const activeTrials =
+      trialResult.status === "fulfilled" ? trialResult.value : [];
+    const patents =
+      patentResult.status === "fulfilled" ? patentResult.value : [];
+
+    const recruitingTrials = activeTrials.filter((t) =>
+      /RECRUITING|ACTIVE|NOT_YET_RECRUITING/i.test(t.status)
+    );
+
+    try {
+      const verdict = await callAgentJson<NoveltyVerdict>(
+        NOVELTY_SYSTEM,
+        `Assess first-in-class status for target ${target.target_name} (${gene}) in indication ${indication}.
+
+FDA approvals found: ${JSON.stringify(fdaApprovals.slice(0, 5))}
+Active trials found: ${recruitingTrials.length} (${recruitingTrials.slice(0, 3).map((t) => t.title).join("; ")})
+Patents found: ${patents.length} (${patents.slice(0, 3).map((p) => p.title).join("; ")})
+
+Return:
+{
+  "is_first_in_class": boolean,
+  "confidence": number,
+  "verdict": "confirmed" | "likely" | "uncertain" | "not_first_in_class",
+  "prior_art_found": string[],
+  "differentiation_angle": string,
+  "novelty_statement": string
+}`
+      );
+      verdicts.push({ ...verdict, target: gene });
+    } catch {
+      verdicts.push({
+        is_first_in_class: recruitingTrials.length === 0 && fdaApprovals.length === 0,
+        confidence: 0.5,
+        verdict:
+          recruitingTrials.length > 2 ? "not_first_in_class" : "uncertain",
+        prior_art_found: [
+          ...fdaApprovals.map((a) => a.brandName),
+          ...recruitingTrials.slice(0, 2).map((t) => t.title),
+        ],
+        differentiation_angle: "Further differentiation analysis required.",
+        novelty_statement: `${gene} in ${indication}: automated partial assessment.`,
+        target: gene,
+      });
+    }
+  }
+
+  return verdicts;
+}
+
+function formatNoveltyVerdict(verdicts: NoveltyVerdict[]): string {
+  return verdicts
+    .map(
+      (v) =>
+        `${v.target}: First-in-class ${v.verdict.toUpperCase()} (confidence ${(v.confidence * 100).toFixed(0)}%) — ${v.novelty_statement}${v.prior_art_found.length ? ` Prior art: ${v.prior_art_found.slice(0, 2).join("; ")}.` : ""}`
+    )
+    .join("\n");
+}
+
 export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> {
   const includeCompleted = obj.mode === "depth";
   const perTermLimit = obj.mode === "depth" ? 12 : 8;
@@ -258,4 +357,38 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
       partial,
     },
   });
+
+  const allCards = await getAllEvidenceCards(obj.id);
+  const targetListCard = findTargetListCard(allCards);
+  const rankedTargets = parseRankedTargetsFromCard(targetListCard);
+
+  if (rankedTargets.length > 0) {
+    const noveltyVerdicts = await firstInClassNoveltyCheck(obj, rankedTargets);
+    if (noveltyVerdicts.length > 0) {
+      const avgConfidence =
+        noveltyVerdicts.reduce((s, v) => s + v.confidence, 0) /
+        noveltyVerdicts.length;
+
+      await insertEvidenceCard(obj.id, {
+        content: `FIRST-IN-CLASS NOVELTY CHECK\n${formatNoveltyVerdict(noveltyVerdicts)}`,
+        source_url: "",
+        source_type: "clinicaltrials",
+        contributing_agent: "clinical_trial",
+        is_novelty_check: true,
+        quality_scores: {
+          sample_size: 0.6,
+          study_design: 0.7,
+          source_credibility: 0.85,
+          replication: 0.5,
+          recency: 0.9,
+          composite: avgConfidence,
+        },
+        regulatory_weight: avgConfidence,
+        raw_source_metadata: {
+          novelty_verdicts: noveltyVerdicts,
+          partial,
+        },
+      });
+    }
+  }
 }

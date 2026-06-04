@@ -7,14 +7,38 @@ export type SourceType =
   | "rwe"
   | "fda"
   | "opentargets"
-  | "semantic_scholar";
+  | "semantic_scholar"
+  | "internal_reasoning";
 export type AgentName =
   | "literature"
   | "mechanism"
   | "clinical_trial"
   | "commercial"
   | "regulatory"
-  | "rwe_signal";
+  | "rwe_signal"
+  | "modality";
+
+export type DomainContext =
+  | "general"
+  | "oncology first-in-class"
+  | "autoimmune chronic"
+  | "sex-specific biology"
+  | "rare disease";
+
+export type IndicationType = "oncology" | "autoimmune_chronic" | "rare_disease";
+
+export interface DeriskRecommendation {
+  study_type: string;
+  primary_objective: string;
+  patient_population: string;
+  n_required: number;
+  primary_endpoint: string;
+  biomarkers_of_efficacy: string[];
+  biomarkers_of_safety: string[];
+  estimated_timeline: string;
+  estimated_cost_range: string;
+  closes_gap: string;
+}
 
 export type OpportunityStatus =
   | "initialising"
@@ -47,6 +71,11 @@ export interface EvidenceCard {
   raw_source_metadata: Record<string, unknown>;
   is_challenge?: boolean;
   challenge_metadata?: ChallengeMetadata;
+  is_cross_domain?: boolean;
+  is_target_list?: boolean;
+  is_modality_card?: boolean;
+  is_novelty_check?: boolean;
+  derisk_recommendation?: DeriskRecommendation;
 }
 
 export interface ChallengeMetadata {
@@ -120,4 +149,6 @@ export interface OpportunityObject {
   evidence_tier?: EvidenceTier;
   query_tier?: EvidenceTier;
   prior_score?: number;
+  domain_context?: DomainContext;
+  indication_type?: IndicationType;
 }

@@ -4,8 +4,10 @@ import type {
   EvidenceCard,
   ActionabilityZone,
   EvidenceTier,
+  IndicationType,
 } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
+import { getIndicationRiskWeights } from "@/lib/indicationRisk";
 
 const CONFIDENCE_TYPE_WEIGHT: Partial<Record<AgentName, number>> = {
   clinical_trial: 1.5,
@@ -66,7 +68,7 @@ export function computeConfidenceScore(
   }
 
   const totalWeight = scoringCards.reduce(
-    (sum, c) => sum + (CONFIDENCE_TYPE_WEIGHT[c.contributing_agent] ?? 1.0),
+    (sum, c) => sum + getCardConfidenceWeight(c),
     0
   );
 
@@ -74,8 +76,7 @@ export function computeConfidenceScore(
     scoringCards.reduce(
       (sum, c) =>
         sum +
-        c.quality_scores.composite *
-          (CONFIDENCE_TYPE_WEIGHT[c.contributing_agent] ?? 1.0),
+        c.quality_scores.composite * getCardConfidenceWeight(c),
       0
     ) / totalWeight;
 
@@ -97,17 +98,31 @@ export function computeConfidenceScore(
   return Math.round(Math.min(1, Math.max(0.1, blended)) * 10000) / 10000;
 }
 
+function getCardConfidenceWeight(card: EvidenceCard): number {
+  const base = CONFIDENCE_TYPE_WEIGHT[card.contributing_agent] ?? 1.0;
+  if (card.is_cross_domain && card.contributing_agent === "literature") {
+    return base * 1.5;
+  }
+  return base;
+}
+
 export function getActionabilityZoneFromConfidence(
   score: number,
-  context?: OrganizationContext | null
+  context?: OrganizationContext | null,
+  indicationType?: IndicationType | null
 ): ActionabilityZone {
-  const lower =
+  const orgLower =
     context?.risk_tolerance?.actionability_lower_threshold ?? 0.3;
-  const upper =
+  const orgUpper =
     context?.risk_tolerance?.actionability_upper_threshold ?? 0.75;
 
+  const indicationMin =
+    getIndicationRiskWeights(indicationType).minimum_confidence_for_act_now;
+  const lower =
+    indicationType != null ? indicationMin : orgLower;
+
   if (score < lower) return "too_early";
-  if (score > upper) return "crowded";
+  if (score > orgUpper) return "crowded";
   return "act_now";
 }
 

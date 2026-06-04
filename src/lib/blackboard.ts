@@ -11,6 +11,7 @@ import { clinicalTrialAgent } from "@/agents/clinicalTrialAgent";
 import { commercialAgent } from "@/agents/commercialAgent";
 import { regulatoryAgent } from "@/agents/regulatoryAgent";
 import { rweSignalAgent } from "@/agents/rweSignalAgent";
+import { modalityAgent } from "@/agents/modalityAgent";
 import { generateSurveillanceTags } from "@/lib/surveillanceTags";
 import { broadcastIntentSpaceEvent } from "@/lib/intentSpace/broadcaster";
 import type { IntentSpaceAgent } from "@/lib/intentSpace/types";
@@ -48,7 +49,8 @@ async function refreshScores(opportunityId: string): Promise<void> {
   const actionability = computeActionabilityScore(evidenceCards, org);
   const actionability_zone = getActionabilityZoneFromConfidence(
     confidence_score,
-    org
+    org,
+    obj.indication_type
   );
 
   const lastEntry = obj.change_log[obj.change_log.length - 1];
@@ -143,6 +145,7 @@ export async function runBlackboard(opportunityId: string): Promise<void> {
   }> = [
     { agent: "literature", run: () => literatureAgent(obj) },
     { agent: "mechanism", run: () => mechanismAgent(obj) },
+    { agent: "modality", run: () => modalityAgent(obj) },
     { agent: "clinical_trial", run: () => clinicalTrialAgent(obj) },
     { agent: "commercial", run: () => commercialAgent(obj) },
     { agent: "rwe_signal", run: () => rweSignalAgent(obj) },

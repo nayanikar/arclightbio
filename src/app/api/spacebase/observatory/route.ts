@@ -2,25 +2,57 @@ import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
 
-function readObservatoryUrl(): string | null {
-  const envUrl = process.env.SPACEBASE_OBSERVATORY_URL?.trim();
-  if (envUrl) return envUrl;
-
-  const workspace = path.resolve(
+function workspacePath(): string {
+  return path.resolve(
     process.cwd(),
     process.env.SPACEBASE_WORKSPACE ?? ".spacebase/arclightbio"
   );
-  const metaPath = path.join(workspace, "observatory.json");
+}
+
+function readObservatoryMeta(): { observatory_url?: string } | null {
+  const metaPath = path.join(workspacePath(), "observatory.json");
   if (!fs.existsSync(metaPath)) return null;
 
   try {
-    const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as {
+    return JSON.parse(fs.readFileSync(metaPath, "utf-8")) as {
       observatory_url?: string;
     };
-    return meta.observatory_url ?? null;
   } catch {
     return null;
   }
+}
+
+function readEnrollmentObservatoryUrl(): string | null {
+  const enrollmentPath = path.join(
+    workspacePath(),
+    ".intent-space",
+    "state",
+    "station-enrollment.json"
+  );
+  if (!fs.existsSync(enrollmentPath)) return null;
+
+  try {
+    const enrollment = JSON.parse(
+      fs.readFileSync(enrollmentPath, "utf-8")
+    ) as { observatory_url?: string };
+    return enrollment.observatory_url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readObservatoryUrl(): string | null {
+  // Prefer claim output files — .env cannot store URL hash fragments (# is a comment).
+  const fromMeta = readObservatoryMeta()?.observatory_url;
+  if (fromMeta?.includes("space=")) return fromMeta;
+
+  const fromEnrollment = readEnrollmentObservatoryUrl();
+  if (fromEnrollment?.includes("space=")) return fromEnrollment;
+
+  const envUrl = process.env.SPACEBASE_OBSERVATORY_URL?.trim();
+  if (envUrl?.includes("space=")) return envUrl;
+
+  return fromMeta ?? fromEnrollment ?? envUrl ?? null;
 }
 
 export async function GET() {

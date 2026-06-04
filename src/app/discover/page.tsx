@@ -9,8 +9,9 @@ import { OrgContextSelector } from "@/components/org/OrgContextSelector";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { OrganizationContext } from "@/types/OrganizationContext";
-import type { EvidenceTier } from "@/types/OpportunityObject";
+import type { DomainContext, EvidenceTier } from "@/types/OpportunityObject";
 import { tierDisplayLabel } from "@/lib/evidenceTier";
+import { DOMAIN_CONTEXTS } from "@/lib/domainContext";
 import { Search, Loader2, Zap, Microscope } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +30,7 @@ export default function DiscoverPage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"speed" | "depth">("speed");
+  const [domainContext, setDomainContext] = useState<DomainContext>("general");
   const [contexts, setContexts] = useState<OrganizationContext[]>([]);
   const [orgContextId, setOrgContextId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -93,7 +95,7 @@ export default function DiscoverPage() {
       const res = await fetch("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, orgContextId, mode }),
+        body: JSON.stringify({ query, orgContextId, mode, domainContext }),
       });
 
       const data = await res.json();
@@ -222,6 +224,33 @@ export default function DiscoverPage() {
                   ) : null}
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Domain context
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {DOMAIN_CONTEXTS.map((ctx) => (
+                  <button
+                    key={ctx.value}
+                    type="button"
+                    onClick={() => setDomainContext(ctx.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-left text-xs transition-all",
+                      domainContext === ctx.value
+                        ? "border-brand-purple bg-brand-purple/10 text-brand-purple ring-1 ring-brand-purple/30"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                    )}
+                    title={ctx.description}
+                  >
+                    {ctx.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400">
+                {DOMAIN_CONTEXTS.find((d) => d.value === domainContext)?.description}
+              </p>
             </div>
 
             {error && (

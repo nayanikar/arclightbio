@@ -37,7 +37,9 @@ export function OpportunityFeed({
     status === "paused"
   );
 
-  const sortedCards = [...streamingCards].sort(
+  const sortedCards = [...streamingCards]
+    .filter((c) => !c.is_target_list && !c.is_modality_card)
+    .sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
@@ -106,6 +108,7 @@ export function OpportunityFeed({
                         <ChallengeCard
                           content={card.content}
                           scoreImpact={card.challenge_metadata?.score_impact}
+                          deriskRecommendation={card.derisk_recommendation}
                         />
                       ) : (
                         <EvidenceCardComponent
@@ -116,6 +119,15 @@ export function OpportunityFeed({
                           qualityScore={card.quality_scores.composite}
                           partial={Boolean(card.raw_source_metadata?.partial)}
                           isNew={isSurveillanceCard}
+                          isCrossDomain={card.is_cross_domain}
+                          isNoveltyCheck={card.is_novelty_check}
+                          noveltyVerdict={
+                            (
+                              card.raw_source_metadata?.novelty_verdicts as
+                                | Array<{ verdict?: string }>
+                                | undefined
+                            )?.[0]?.verdict
+                          }
                         />
                       )}
                     </motion.div>

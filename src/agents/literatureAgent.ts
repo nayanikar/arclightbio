@@ -9,12 +9,43 @@ import {
   detectSampleSize as scoreSampleSizeFromContent,
   detectStudyDesign as scoreStudyDesignFromContent,
 } from "@/lib/evidenceQuality";
-import { ApiError } from "@/lib/http";
+import {
+  dedupePapersByPmid,
+  detectCrossDomainConnections,
+  expandSearchDomains,
+  type DomainPaperSet,
+} from "@/lib/literatureDomains";
+
+const INDICATION_SPECIFICITY_RULE = `Indication specificity rule: A paper is only relevant if it studies the same disease, condition, or patient population as the hypothesis, OR if it studies a mechanism that is directly and explicitly linked to the hypothesis disease in the paper itself.
+
+Reject a paper if:
+- It uses the same biomarker type or platform (e.g. exosomes, microRNAs, PD-L1) but in a completely different disease context with no mechanistic bridge to the hypothesis
+- It is a general review of a technology that happens to mention the hypothesis disease in passing
+- The only connection to the hypothesis is a shared experimental technique or assay method
+
+Accept a paper if:
+- It directly studies the hypothesis disease or indication
+- It studies a mechanistically adjacent condition where the paper itself explicitly explains the connection
+- It is a cross-domain signal where the mechanism bridges two fields in a way that is directly relevant to the hypothesis patient population
+
+Examples of what to reject:
+- Hypothesis is about ALS biomarkers → reject a breast cancer exosome paper unless it explicitly discusses motor neuron biology or ALS mechanisms
+- Hypothesis is about lupus flares → reject a general estrogen receptor paper about osteoporosis unless it explicitly discusses immune modulation
+- Hypothesis is about NSCLC immunotherapy → reject a pancreatic cancer checkpoint paper unless it explicitly discusses shared resistance mechanisms
+
+The test: would a domain expert reading this paper say 'this is directly relevant to our hypothesis' or would they say 'interesting technique but wrong disease'? Only include papers that pass the domain expert test.`;
 
 const LITERATURE_AGENT_SYSTEM = `You are the Literature Agent for Opportunity Space, built by Arclight Bio.
-Detect patterns across paper abstracts relevant to the hypothesis.
+Review paper abstracts and return only those directly relevant to the hypothesis.
 Return JSON array of objects with: content (one-sentence claim), pmid, study_design, sample_size (number or null).
-Quality over quantity — max 5 papers.`;
+Quality over quantity — max 5 papers.
+
+Relevance criteria:
+- The paper must support, contradict, or materially inform the specific hypothesis statement and patient population
+- Prefer papers with explicit mechanistic or clinical connection to the hypothesis indication
+- Exclude papers that match keywords but address a different disease without a stated mechanistic bridge
+
+${INDICATION_SPECIFICITY_RULE}`;
 
 interface LiteratureCardOutput {
   content: string;
@@ -119,7 +150,11 @@ function formatEvidenceContent(
 export function buildPubMedEvidenceCard(
   paper: Paper,
   content: string,
-  options?: { surveillance?: boolean; partial?: boolean }
+  options?: {
+    surveillance?: boolean;
+    partial?: boolean;
+    sourceDomain?: string;
+  }
 ): Omit<EvidenceCard, "id" | "timestamp"> {
   const design = detectStudyDesign(paper.abstract);
   const sampleSize = extractSampleSize(paper.abstract);
@@ -148,22 +183,60 @@ export function buildPubMedEvidenceCard(
       sample_size: sampleSize,
       partial: options?.partial ?? false,
       surveillance: options?.surveillance ?? false,
+      source_domain: options?.sourceDomain,
     },
   };
 }
 
-export async function literatureAgent(obj: OpportunityObject): Promise<void> {
+async function fetchMultiDomainPapers(
+  obj: OpportunityObject
+): Promise<{
+  papers: Paper[];
+  domainSets: DomainPaperSet[];
+  partial: boolean;
+  expandedDomainCount: number;
+}> {
   const query = obj.search_query ?? obj.hypothesis.statement;
-  const maxResults = obj.mode === "depth" ? 40 : 20;
-  let papers: Awaited<ReturnType<typeof searchPubMed>> = [];
+  const domainContext = obj.domain_context ?? "general";
+  const anchorLimit = obj.mode === "depth" ? 20 : 15;
+  const domainLimit = 15;
   let partial = false;
 
-  try {
-    papers = await searchPubMed(query, maxResults);
-  } catch (err) {
-    partial = true;
-    if (!(err instanceof ApiError)) throw err;
-  }
+  const expandedDomains = await expandSearchDomains(query, domainContext);
+
+  const searchTasks = [
+    { domain: "Anchor query", query, limit: anchorLimit },
+    ...expandedDomains.map((d) => ({
+      domain: d.domain,
+      query: d.pubmed_query,
+      limit: domainLimit,
+    })),
+  ];
+
+  const results = await Promise.allSettled(
+    searchTasks.map((task) => searchPubMed(task.query, task.limit))
+  );
+
+  const domainSets: DomainPaperSet[] = [];
+  const allPaperSets: Array<{ domain: string; papers: Paper[] }> = [];
+
+  results.forEach((result, i) => {
+    const task = searchTasks[i];
+    if (result.status === "fulfilled") {
+      domainSets.push({ domain: task.domain, papers: result.value });
+      allPaperSets.push({ domain: task.domain, papers: result.value });
+    } else {
+      partial = true;
+      domainSets.push({ domain: task.domain, papers: [] });
+      allPaperSets.push({ domain: task.domain, papers: [] });
+    }
+  });
+
+  const deduped = dedupePapersByPmid(allPaperSets);
+  let papers = Array.from(deduped.values()).map((entry) => ({
+    ...entry.paper,
+    source_domains: entry.domains,
+  })) as Paper[];
 
   if (obj.mode === "depth" && papers.length > 0) {
     try {
@@ -176,6 +249,65 @@ export async function literatureAgent(obj: OpportunityObject): Promise<void> {
       partial = true;
     }
   }
+
+  return {
+    papers,
+    domainSets,
+    partial,
+    expandedDomainCount: expandedDomains.length,
+  };
+}
+
+async function postCrossDomainCards(
+  obj: OpportunityObject,
+  domainSets: DomainPaperSet[],
+  partial: boolean
+): Promise<void> {
+  const connections = await detectCrossDomainConnections(
+    obj.hypothesis.statement,
+    domainSets.filter((ds) => ds.papers.length > 0)
+  );
+
+  for (const conn of connections) {
+    const composite = Math.min(
+      0.95,
+      Math.max(0.55, conn.confidence ?? 0.72)
+    );
+    const content = `[Cross-domain: ${conn.domain_a} × ${conn.domain_b}] ${conn.claim} — Mechanism: ${conn.mechanism}. ${conn.novelty}`;
+
+    await insertEvidenceCard(obj.id, {
+      content,
+      source_url: conn.supporting_papers[0]
+        ? `https://pubmed.ncbi.nlm.nih.gov/${conn.supporting_papers[0]}/`
+        : "",
+      source_type: "pubmed",
+      contributing_agent: "literature",
+      is_cross_domain: true,
+      quality_scores: {
+        sample_size: 0.6,
+        study_design: 0.7,
+        source_credibility: 0.8,
+        replication: 0.65,
+        recency: 0.75,
+        composite,
+      },
+      regulatory_weight: composite,
+      raw_source_metadata: {
+        domain_a: conn.domain_a,
+        domain_b: conn.domain_b,
+        mechanism: conn.mechanism,
+        novelty: conn.novelty,
+        supporting_pmids: conn.supporting_papers,
+        partial,
+      },
+    });
+  }
+}
+
+export async function literatureAgent(obj: OpportunityObject): Promise<void> {
+  const query = obj.search_query ?? obj.hypothesis.statement;
+  const { papers, domainSets, partial, expandedDomainCount } =
+    await fetchMultiDomainPapers(obj);
 
   if (papers.length === 0) {
     await insertEvidenceCard(obj.id, {
@@ -194,15 +326,22 @@ export async function literatureAgent(obj: OpportunityObject): Promise<void> {
         composite: 0.35,
       },
       regulatory_weight: 0.35,
-      raw_source_metadata: { partial, query, paperCount: 0 },
+      raw_source_metadata: {
+        partial,
+        query,
+        paperCount: 0,
+        expandedDomainCount,
+      },
     });
     return;
   }
 
+  await postCrossDomainCards(obj, domainSets, partial);
+
   let cardOutputs: LiteratureCardOutput[] = [];
   try {
     const abstractBlock = papers
-      .slice(0, 10)
+      .slice(0, 12)
       .map(
         (p) =>
           `PMID:${p.pmid}\nTitle:${p.title}\nAbstract:${p.abstract.slice(0, 400)}`
@@ -211,7 +350,16 @@ export async function literatureAgent(obj: OpportunityObject): Promise<void> {
 
     cardOutputs = await callAgentJson<LiteratureCardOutput[]>(
       LITERATURE_AGENT_SYSTEM,
-      `Hypothesis: ${obj.hypothesis.statement}\n\nPapers:\n${abstractBlock}`
+      `Hypothesis: ${obj.hypothesis.statement}
+Patient population: ${obj.hypothesis.patient_population}
+Unmet need: ${obj.hypothesis.unmet_need}
+Domain context: ${obj.domain_context ?? "general"}
+Domains searched: ${domainSets.map((d) => d.domain).join(", ")}
+
+Apply the indication specificity rule strictly. Only return papers that pass the domain expert test.
+
+Papers:
+${abstractBlock}`
     );
   } catch {
     cardOutputs = papers.slice(0, 5).map((p) => ({
@@ -224,9 +372,11 @@ export async function literatureAgent(obj: OpportunityObject): Promise<void> {
 
   for (const output of cardOutputs.slice(0, 5)) {
     const paper = papers.find((p) => p.pmid === output.pmid) ?? papers[0];
+    const sourceDomain =
+      (paper as Paper & { source_domains?: string[] }).source_domains?.[0];
     await insertEvidenceCard(
       obj.id,
-      buildPubMedEvidenceCard(paper, output.content, { partial })
+      buildPubMedEvidenceCard(paper, output.content, { partial, sourceDomain })
     );
   }
 }

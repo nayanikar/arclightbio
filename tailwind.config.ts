@@ -53,7 +53,7 @@ const config: Config = {
           purple: "#534AB7",
           cream: "#FDFAF5",
           signal: "#BA7517",
-          teal: "#1D9E75",
+          teal: "#2A9D8F",
           coral: "#D85A30",
           amber: "#BA7517",
         },
@@ -64,6 +64,7 @@ const config: Config = {
           commercial: "#BA7517",
           regulatory: "#D85A30",
           rwe: "#639922",
+          modality: "#8B5CF6",
         },
       },
       borderRadius: {

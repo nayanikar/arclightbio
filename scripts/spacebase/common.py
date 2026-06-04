@@ -14,7 +14,7 @@ JsonDict = Dict[str, Any]
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_AGENT = "arclightbio"
 DEFAULT_WORKSPACE = ".spacebase/arclightbio"
-EXPECTED_SPACE_ID = "space-fcc6beac-97a6-4c31-b551-3288bee7c0f5"
+EXPECTED_SPACE_ID = "space-46111387-13ad-4e0f-b6ba-96fe54255d26"
 
 
 def ensure_sdk_path() -> Path:

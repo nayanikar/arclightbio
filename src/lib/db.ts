@@ -2,8 +2,10 @@ import { randomUUID } from "crypto";
 import type {
   AgentName,
   Challenge,
+  DomainContext,
   EvidenceCard,
   Hypothesis,
+  IndicationType,
   OpportunityObject,
   OpportunityStatus,
   QualityScores,
@@ -12,6 +14,7 @@ import type {
 import type { OrganizationContext } from "@/types/OrganizationContext";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import * as fileStore from "./fileStore";
+import { domainContextToIndicationType } from "./domainContext";
 
 const DEFAULT_ORG_CONTEXTS: OrganizationContext[] = [
   {
@@ -163,10 +166,13 @@ export async function createOpportunityObject(input: {
   evidence_tier?: OpportunityObject["evidence_tier"];
   query_tier?: OpportunityObject["query_tier"];
   prior_score?: number;
+  domain_context?: DomainContext;
 }): Promise<OpportunityObject> {
   const now = new Date().toISOString();
   const id = randomUUID();
   const priorScore = input.prior_score ?? 0.45;
+  const domainContext = input.domain_context ?? "general";
+  const indicationType = domainContextToIndicationType(domainContext);
 
   const obj: OpportunityObject = {
     id,
@@ -190,6 +196,8 @@ export async function createOpportunityObject(input: {
     evidence_tier: input.evidence_tier,
     query_tier: input.query_tier ?? input.evidence_tier,
     prior_score: priorScore,
+    domain_context: domainContext,
+    indication_type: indicationType,
   };
 
   if (isSupabaseConfigured()) {
@@ -212,6 +220,8 @@ export async function createOpportunityObject(input: {
       evidence_tier: obj.evidence_tier ?? null,
       query_tier: obj.query_tier ?? obj.evidence_tier ?? null,
       prior_score: obj.prior_score ?? null,
+      domain_context: obj.domain_context,
+      indication_type: obj.indication_type,
     });
     if (error) throw error;
   } else {
@@ -314,6 +324,10 @@ function mapOpportunityRow(
       typeof row.prior_score === "number"
         ? (row.prior_score as number)
         : undefined,
+    domain_context:
+      (row.domain_context as DomainContext | undefined) ?? "general",
+    indication_type:
+      (row.indication_type as IndicationType | undefined) ?? "oncology",
   };
 }
 
@@ -330,6 +344,11 @@ function mapEvidenceCardRow(row: Record<string, unknown>): EvidenceCard {
     raw_source_metadata: (row.raw_source_metadata as Record<string, unknown>) ?? {},
     is_challenge: row.is_challenge as boolean | undefined,
     challenge_metadata: row.challenge_metadata as EvidenceCard["challenge_metadata"],
+    is_cross_domain: (row.is_cross_domain as boolean | undefined) ?? false,
+    is_target_list: (row.is_target_list as boolean | undefined) ?? false,
+    is_modality_card: (row.is_modality_card as boolean | undefined) ?? false,
+    is_novelty_check: (row.is_novelty_check as boolean | undefined) ?? false,
+    derisk_recommendation: row.derisk_recommendation as EvidenceCard["derisk_recommendation"],
   };
 }
 
@@ -392,6 +411,11 @@ export async function insertEvidenceCard(
       raw_source_metadata: fullCard.raw_source_metadata,
       is_challenge: fullCard.is_challenge ?? false,
       challenge_metadata: fullCard.challenge_metadata ?? null,
+      is_cross_domain: fullCard.is_cross_domain ?? false,
+      is_target_list: fullCard.is_target_list ?? false,
+      is_modality_card: fullCard.is_modality_card ?? false,
+      is_novelty_check: fullCard.is_novelty_check ?? false,
+      derisk_recommendation: fullCard.derisk_recommendation ?? null,
     });
     if (error) throw error;
   } else {
@@ -470,7 +494,12 @@ export async function deleteEvidenceCards(cardIds: string[]): Promise<void> {
 
 export async function updateEvidenceCard(
   cardId: string,
-  updates: Partial<Pick<EvidenceCard, "quality_scores" | "regulatory_weight">>
+  updates: Partial<
+    Pick<
+      EvidenceCard,
+      "quality_scores" | "regulatory_weight" | "derisk_recommendation"
+    >
+  >
 ): Promise<void> {
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();

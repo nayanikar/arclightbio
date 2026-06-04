@@ -1,8 +1,9 @@
-import type { OpportunityObject } from "@/types/OpportunityObject";
+import type { DomainContext, OpportunityObject } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
 import { callAgentJson } from "@/api/anthropic";
 import type { Paper } from "@/types/api";
 import { formatOrgContextForPrompt } from "@/lib/orgContext";
+import { getHypothesisInstruction } from "@/lib/domainContext";
 
 const HYPOTHESIS_SYSTEM = `You are the hypothesis generator for Opportunity Space by Arclight Bio.
 Given a search query, organization context, and real PubMed abstracts, generate a structured hypothesis.
@@ -13,7 +14,8 @@ The org_positioning field MUST describe strategic fit for the specified organiza
 export async function generateHypothesis(
   query: string,
   papers: Paper[],
-  org: OrganizationContext
+  org: OrganizationContext,
+  domainContext?: DomainContext
 ): Promise<OpportunityObject["hypothesis"]> {
   const abstractSummary = papers
     .slice(0, 10)
@@ -24,6 +26,10 @@ export async function generateHypothesis(
     .join("\n\n");
 
   const orgBlock = formatOrgContextForPrompt(org);
+  const domainInstruction = getHypothesisInstruction(domainContext);
+  const domainBlock = domainInstruction
+    ? `\nDomain context (${domainContext}): ${domainInstruction}\n`
+    : "";
 
   try {
     return await callAgentJson<OpportunityObject["hypothesis"]>(
@@ -31,7 +37,7 @@ export async function generateHypothesis(
       `Search query: "${query}"
 
 ${orgBlock}
-
+${domainBlock}
 IMPORTANT: Write org_positioning for ${org.org_name} only. Reference their portfolio assets and therapeutic areas listed above.
 
 PubMed abstracts:

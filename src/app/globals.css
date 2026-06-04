@@ -35,7 +35,7 @@
     --color-text-primary: #1c1917;
     --color-text-secondary: #57534e;
     --color-text-tertiary: #78716c;
-    --color-border-tertiary: #e5ddd2;
+    --color-border-tertiary: #ede8e0;
   }
 
   * {
@@ -53,8 +53,8 @@
   }
 
   .zone-act {
-    background: #e1f5ee;
-    color: #085041;
+    background: #e4f4f0;
+    color: #0d5c52;
   }
 
   .zone-early {

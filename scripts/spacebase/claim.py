@@ -19,8 +19,8 @@ from common import (
 
 CLAIM_URL = (
     "https://spacebase1.differ.ac/claim/"
-    "space-fcc6beac-97a6-4c31-b551-3288bee7c0f5/"
-    "e375b45751fd5b8fa86da203a81fd4fec84d"
+    "space-46111387-13ad-4e0f-b6ba-96fe54255d26/"
+    "7e6ad75a8e2e89d135b9755ae812d418760e"
 )
 
 

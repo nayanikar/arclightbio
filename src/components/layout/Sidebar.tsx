@@ -6,15 +6,25 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExternalLink, LayoutDashboard, Search } from "lucide-react";
+import { OpportunitySidebarRail } from "@/components/opportunity/OpportunitySidebarRail";
+import { useSurveillanceSessionControls } from "@/hooks/useSurveillanceSessionControls";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Search },
 ];
 
+const OPPORTUNITY_PATH = /^\/opportunity\/[^/]+$/;
+
+function OpportunitySidebarRailSlot() {
+  const { handleResume, resuming } = useSurveillanceSessionControls();
+  return <OpportunitySidebarRail onResume={handleResume} resuming={resuming} />;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [observatoryUrl, setObservatoryUrl] = useState<string | null>(null);
+  const isOpportunityPage = OPPORTUNITY_PATH.test(pathname ?? "");
 
   useEffect(() => {
     fetch("/api/spacebase/observatory")
@@ -27,13 +37,16 @@ export function Sidebar() {
 
   return (
     <aside
-      className="sticky top-0 flex h-screen w-[220px] shrink-0 flex-col border-r text-white"
+      className={cn(
+        "sticky top-0 flex h-screen shrink-0 flex-col border-r text-white",
+        isOpportunityPage ? "w-[280px]" : "w-[220px]"
+      )}
       style={{
         background: "linear-gradient(180deg, #1A1528 0%, #12101C 100%)",
         borderColor: "rgba(83, 74, 183, 0.15)",
       }}
     >
-      <div className="px-5 py-5">
+      <div className="shrink-0 px-5 py-5">
         <div className="flex items-center gap-2.5">
           <Image
             src="/favicon.svg"
@@ -50,7 +63,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3">
+      <nav className="shrink-0 space-y-0.5 px-3">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
@@ -82,7 +95,13 @@ export function Sidebar() {
         ) : null}
       </nav>
 
-      <div className="border-t border-white/10 px-5 py-4">
+      {isOpportunityPage && (
+        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+          <OpportunitySidebarRailSlot />
+        </div>
+      )}
+
+      <div className="shrink-0 border-t border-white/10 px-5 py-4">
         <p className="text-[10px] uppercase tracking-wider text-white/35">
           Living Discovery Engine
         </p>
