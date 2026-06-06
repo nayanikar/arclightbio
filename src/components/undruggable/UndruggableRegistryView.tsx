@@ -69,11 +69,15 @@ export function UndruggableRegistryView() {
   const [scope, setScope] = useState<UndruggableScopeFilter>("all");
 
   useEffect(() => {
-    fetch("/api/undruggable")
-      .then((r) => r.json())
+    fetch("/api/undruggable", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load registry (${r.status})`);
+        return r.json();
+      })
       .then((data) => {
-        setTargets(data.targets ?? []);
-        setStats(data.stats ?? computeUndruggableStats(data.targets ?? []));
+        const list = data.targets ?? [];
+        setTargets(list);
+        setStats(data.stats ?? computeUndruggableStats(list));
       })
       .catch(() => setError("Could not load undruggable registry."))
       .finally(() => setLoading(false));

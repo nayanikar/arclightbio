@@ -63,10 +63,17 @@ export default function OpportunityPage() {
   }, [reloadOpportunity]);
 
   useEffect(() => {
-    fetch(`/api/opportunity/${id}`)
-      .then((r) => r.json())
+    const controller = new AbortController();
+    let cancelled = false;
+
+    fetch(`/api/opportunity/${id}`, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load opportunity (${r.status})`);
+        return r.json();
+      })
       .then((data: OpportunityObject & { error?: string }) => {
-        if (!data.id) {
+        if (cancelled) return;
+        if (!data.id || data.id !== id) {
           setNotFound(true);
           setLoaded(true);
           return;
@@ -74,13 +81,24 @@ export default function OpportunityPage() {
         setOpportunity(data);
         setLoaded(true);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
         setNotFound(true);
         setLoaded(true);
       });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [id, setOpportunity]);
 
-  if (!loaded || opportunity?.id !== id) {
+  const waitingForSession =
+    !loaded || (!notFound && (opportunity == null || opportunity.id !== id));
+
+  if (waitingForSession) {
     return (
       <>
         <TopBar subtitle="Loading session…" compact />
