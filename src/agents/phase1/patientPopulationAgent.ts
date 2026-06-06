@@ -12,18 +12,21 @@ import {
   sanitizePopulation,
 } from "./shared";
 
-const SYSTEM = `You are the Patient Population Agent for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Patient Population Agent for Arclight Bio discovery.
 Define the target patient population from cohort data, user query, and parent domain.
 
 The population definition must reflect query-defined inclusion criteria as primary (e.g. "without dominant oncogenic driver").
 Loss-of-function biomarkers in the cohort are NOT required for inclusion unless the query explicitly requires LOF.
+
+Brevity: definition, unmet_need, and cohort_summary are each one sentence, 12–20 words. inclusion/exclusion items are short phrases, not paragraphs.
+
 Return JSON:
 {
-  "definition": string (one falsifiable population definition sentence),
+  "definition": string (one falsifiable population definition sentence, max 20 words),
   "inclusion_criteria": string[],
   "exclusion_criteria": string[],
-  "unmet_need": string,
-  "cohort_summary": string,
+  "unmet_need": string (one sentence, max 18 words),
+  "cohort_summary": string (one sentence, max 18 words),
   "estimated_prevalence": string (optional)
 }${JSON_ONLY_SUFFIX}`;
 

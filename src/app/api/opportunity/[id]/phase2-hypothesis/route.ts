@@ -15,7 +15,7 @@ export async function POST(
     }
     if (obj.schema_version !== 3) {
       return NextResponse.json(
-        { error: "Phase 2 hypothesis selection is only supported for V3" },
+        { error: "Hypothesis selection is not supported for this program version" },
         { status: 400 }
       );
     }

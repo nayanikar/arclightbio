@@ -2,6 +2,7 @@
 
 import type { AgentName } from "@/types/OpportunityObject";
 import { cn } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/urlSafety";
 import { ExternalLink } from "lucide-react";
 
 const AGENT_COLORS: Record<AgentName, string> = {
@@ -116,6 +117,7 @@ export function EvidenceCardComponent({
       noveltyVerdict ??
       "Novelty check"
     : undefined;
+  const safeSourceUrl = safeExternalHref(sourceUrl);
 
   return (
     <article
@@ -172,9 +174,9 @@ export function EvidenceCardComponent({
       </div>
       <p className="text-sm leading-relaxed text-gray-800">{content}</p>
       <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2">
-        {sourceUrl ? (
+        {safeSourceUrl ? (
           <a
-            href={sourceUrl}
+            href={safeSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs font-medium text-brand-purple hover:underline"

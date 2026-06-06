@@ -14,6 +14,7 @@ import type { InnovationLevel, ParentDomain } from "@/types/V3Pipeline";
 import { normalizeInnovationLevel } from "@/lib/innovationProfile";
 import { isParentDomain } from "@/lib/parentDomains";
 import { parseCohortCsv } from "@/lib/cohortParser";
+import { isCohortFileWithinLimits } from "@/lib/cohortLimits";
 import { createOpportunityObjectV3, saveCohort } from "@/lib/v3Db";
 
 const VALID_DOMAIN_CONTEXTS: DomainContext[] = [
@@ -56,7 +57,7 @@ async function handleV3Discover(input: {
     return NextResponse.json({ error: "Invalid parent domain" }, { status: 400 });
   }
   if (!input.cohortCsv?.trim()) {
-    return NextResponse.json({ error: "Cohort CSV is required for V3" }, { status: 400 });
+    return NextResponse.json({ error: "Cohort CSV is required" }, { status: 400 });
   }
 
   const orgId = await resolveOrgId(input.orgContextId);
@@ -122,8 +123,15 @@ export async function POST(request: NextRequest) {
       let fileName = "cohort.csv";
 
       if (typeof cohortFile === "object" && cohortFile !== null && "text" in cohortFile) {
-        cohortCsv = await (cohortFile as File).text();
-        fileName = (cohortFile as File).name || fileName;
+        const file = cohortFile as File;
+        if (!isCohortFileWithinLimits(file.size)) {
+          return NextResponse.json(
+            { error: "Cohort CSV file is too large (max 5 MB)" },
+            { status: 400 }
+          );
+        }
+        cohortCsv = await file.text();
+        fileName = file.name || fileName;
       } else if (typeof cohortFile === "string") {
         cohortCsv = cohortFile;
       }

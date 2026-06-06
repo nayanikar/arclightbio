@@ -65,7 +65,7 @@ export default function RegulatoryPage() {
         badge={
           <Link href={`/opportunity/${id}`}>
             <Button variant="outline" size="sm">
-              Back to Opportunity
+              Back to program
             </Button>
           </Link>
         }
@@ -78,7 +78,7 @@ export default function RegulatoryPage() {
               Assemble Regulatory Package
             </h2>
             <p className="mt-2 text-sm text-gray-500">
-              Version-lock this Opportunity Object and generate a provenance trail
+              Version-lock this discovery program and generate a provenance trail
               mapped to FDA January 2025 AI guidance.
             </p>
             {error && <p className="mt-2 text-sm text-brand-coral">{error}</p>}

@@ -118,8 +118,8 @@ export function UndruggableRegistryView() {
             >
               Arclight records targets that fail three-modality druggability screening.
               Future discovery programs inherit this registry automatically — avoiding
-              repeated dead-end routes while remaining open to re-scan when structural
-              biology shifts.
+              repeated dead-end routes. Rescan-eligible entries may be reconsidered on
+              a manual target re-screen; automatic literature monitoring is not active yet.
             </p>
           </div>
           <div
@@ -243,7 +243,7 @@ export function UndruggableRegistryView() {
           </p>
           <p className="mt-2 text-sm" style={{ color: "var(--color-text-tertiary)" }}>
             {targets.length === 0
-              ? "Undruggable targets will appear here after Phase 2 target screening."
+              ? "Undruggable targets will appear here after target screening completes."
               : "Try clearing filters or broadening your search."}
           </p>
         </div>

@@ -108,7 +108,7 @@ export async function POST(
     } catch {
       compliance = {
         ai_role_declaration:
-          "Arclight Bio Opportunity Space autonomously generated evidence cards via live API queries. Human validation required before submission.",
+          "Arclight Bio Discovery Program autonomously generated evidence cards via live API queries. Human validation required before submission.",
         evidence_sections: [
           {
             section: "Discovery Hypothesis",
@@ -137,7 +137,7 @@ export async function POST(
       credibility_report: {
         ai_role_declaration:
           compliance.ai_role_declaration ??
-          "AI-assisted discovery by Arclight Bio Opportunity Space",
+          "AI-assisted discovery by Arclight Bio Discovery Program",
         evidence_sections: compliance.evidence_sections ?? [],
       },
       gap_report: compliance.gap_report ?? [],

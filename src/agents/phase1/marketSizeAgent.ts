@@ -11,9 +11,13 @@ import {
   loadPhase1Context,
 } from "./shared";
 
-const SYSTEM = `You are the Market Size Agent for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Market Size Agent for Arclight Bio discovery.
 Estimate addressable market size per anchor population (USD billions, rough order-of-magnitude).
 Use epidemiology, precedent therapy markets, or literature-informed rough guesses — precision is not required.
+
+market_size_rationale: one sentence, max 16 words. No epidemiology lectures — state the basis briefly.
+market_size: legacy display string e.g. "~$8B".
+
 Return JSON:
 {
   "biology": {
@@ -26,9 +30,7 @@ Return JSON:
     "market_size_rationale": string,
     "market_size": string
   }
-}
-market_size_rationale: one sentence explaining the rough estimate.
-market_size: legacy display string e.g. "~$8B".${JSON_ONLY_SUFFIX}`;
+}${JSON_ONLY_SUFFIX}`;
 
 interface MarketAnchorPayload {
   market_size_usd_b?: number;

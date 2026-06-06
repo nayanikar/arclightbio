@@ -15,7 +15,7 @@ import {
 } from "@/lib/innovationProfile";
 
 export const JSON_ONLY_SUFFIX =
-  "\n\nRespond with valid JSON only, no markdown fences. Use falsifiable subject–relationship–outcome sentences.";
+  "\n\nRespond with valid JSON only, no markdown fences. Use falsifiable subject–relationship–outcome sentences. Keep each string field to one short sentence (12–22 words).";
 
 export async function loadPhase1Context(
   obj: OpportunityObject

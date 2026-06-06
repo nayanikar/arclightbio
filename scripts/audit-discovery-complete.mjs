@@ -92,7 +92,7 @@ async function main() {
 
   await page.screenshot({ path: path.join(outDir, "04-complete-opportunity.png"), fullPage: true });
 
-  await page.goto(`${base}/`, { waitUntil: "networkidle" });
+  await page.goto(`${base}/dashboard`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
   const hasProgram = await page.getByText(/ARID1A|chromatin|discovery thesis/i).first().isVisible().catch(() => false);
   findings.push({

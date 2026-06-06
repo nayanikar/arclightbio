@@ -15,9 +15,11 @@ import {
   loadPhase1Context,
 } from "./shared";
 
-const SYSTEM = `You are the Causation Filter Agent for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Causation Filter Agent for Arclight Bio discovery.
 Promote the strongest 20 of 50 association hypotheses to causation stage.
 Each promoted hypothesis needs mechanistic_chain with ASSOCIATION and CAUSATION typed edges.
+
+Each statement: one sentence, max 18 words. Edge rationale fields: max 14 words each.
 
 Return JSON:
 {

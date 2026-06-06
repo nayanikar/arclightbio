@@ -9,6 +9,10 @@ import { callAgent } from "@/api/anthropic";
 import { ApiError } from "@/lib/http";
 
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const { searchParams } = new URL(request.url);
   const service = searchParams.get("service");
   const q = searchParams.get("q") ?? "cardiac amyloidosis";
@@ -51,7 +55,7 @@ export async function GET(request: NextRequest) {
       case "anthropic": {
         const text = await callAgent(
           "Respond with a JSON object: { ok: true, message: string }",
-          "Say hello from Arclight Bio Opportunity Space."
+          "Say hello from Arclight Bio Discovery Program."
         );
         return NextResponse.json({ ok: true, response: text.slice(0, 200) });
       }

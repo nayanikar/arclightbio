@@ -36,8 +36,20 @@ Output structure rules:
 - Do not compress meaning; reorganize for scanability.
 `.trim();
 
+export const JSON_FIELD_BREVITY_RULES = `
+JSON field brevity (strict for string values in JSON responses):
+- Each string field: one sentence, 12–22 words unless the schema says otherwise.
+- Use plain language. Prefer two short sentences over one long compound sentence.
+- population, definition, rationale, anchor_statement, unmet_need, cohort_summary, market_size_rationale: scan-friendly, not academic prose.
+- Do not append parenthetical lists longer than 4 items — summarize instead.
+`.trim();
+
 export function withScientificWritingRules(systemPrompt: string): string {
   return `${systemPrompt.trim()}\n\n---\n${SCIENTIFIC_WRITING_BLOCK}\n\n${OUTPUT_STRUCTURE_RULES}`;
+}
+
+export function withJsonFieldBrevity(systemPrompt: string): string {
+  return `${withScientificWritingRules(systemPrompt)}\n\n${JSON_FIELD_BREVITY_RULES}`;
 }
 
 export function withDiscoveryMindset(

@@ -1,0 +1,74 @@
+# Arclight Bio — Discovery Program
+
+> Machine-readable index for automated reviewers and developers.
+> Primary document: README.md
+
+## Start here
+
+- [README.md](README.md) — Complete product documentation: business case, walkthrough, architecture, agent pipeline, API, setup, screenshots
+
+## Product summary
+
+Discovery Program is an AI-native commercial development discovery platform for Nucleate NY BioHack 2026 (Track 02 Autonomous Research, Pfizer Commercial Development Discovery).
+
+Input: patient cohort CSV + clinical question + org context.
+Output: ranked discovery programs with trust scores, TPP blueprints, IND roadmaps, regulatory provenance.
+Differentiator: cohort-first cross-domain mining with live PubMed/trials/patents/Open Targets queries — not taxonomy-bound expert search.
+
+Tagline: Find what experts don't know to look for.
+
+## Screenshots
+
+- [public/marketing/home.png](public/marketing/home.png) — Marketing home
+- [public/marketing/discover.png](public/marketing/discover.png) — Discover flow
+- [public/marketing/dashboard.png](public/marketing/dashboard.png) — Portfolio dashboard
+- [public/marketing/undruggable-registry.png](public/marketing/undruggable-registry.png) — Undruggable registry
+
+## Sample data
+
+- [test-data/oncology-lof-no-driver-cohort.csv](test-data/oncology-lof-no-driver-cohort.csv) — 20-patient LOF/no-driver oncology cohort
+
+## Verify claims in code
+
+| Claim | Path |
+|-------|------|
+| Two-phase pipeline orchestration | src/lib/blackboardRunV3.ts |
+| Phase 1 agents (18) | src/agents/phase1/ |
+| Phase 2 agents (26) | src/agents/phase2/ |
+| Program trust score | src/lib/programTrustScore.ts |
+| Undruggable registry | src/lib/undruggableRegistry.ts |
+| Live PubMed | src/api/pubmed.ts |
+| Live ClinicalTrials.gov | src/api/clinicalTrials.ts |
+| Live Open Targets | src/api/openTargets.ts |
+| Live Lens patents | src/api/lens.ts |
+| Persistence | src/lib/v3Db.ts |
+| Agent audit trail | src/lib/agentTrail.ts |
+| Marketing / business copy | src/components/home/homeCopy.ts |
+| Discover UI | src/app/discover/page.tsx |
+| Program page UI | src/components/opportunity/OpportunityPageV3.tsx |
+| Regulatory PDF | src/lib/regulatoryPdf.ts |
+| Cohort parser | src/lib/cohortParser.ts |
+| RLS migration | supabase/migrations/022_enable_rls.sql |
+
+## Deep specs
+
+- [opportunity_space_build_spec.md](opportunity_space_build_spec.md) — Full architecture spec
+- [public/arclight_agent_upgrade_spec.md](public/arclight_agent_upgrade_spec.md) — Agent design spec
+
+## Routes
+
+- / — marketing home
+- /discover — launch discovery (cohort + query required)
+- /dashboard — portfolio queue with trust scores
+- /opportunity/[id] — live discovery program page
+- /undruggable — cross-session undruggable registry
+- /opportunity/[id]/regulatory — regulatory assembly + PDF
+
+## Quick commands
+
+```bash
+cd arclightbio && npm install && npm run dev
+npm test
+node scripts/run-v3-discovery-e2e.mjs
+npm run capture-marketing [opportunityId]
+```

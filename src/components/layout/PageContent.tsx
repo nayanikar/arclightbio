@@ -1,3 +1,4 @@
+import { PAGE_GUTTER, PAGE_MAX, PAGE_MAX_NARROW } from "@/components/layout/pageLayout";
 import { cn } from "@/lib/utils";
 
 interface PageContentProps {
@@ -18,9 +19,10 @@ export function PageContent({
   return (
     <div
       className={cn(
-        "mx-auto w-full px-4 pb-[max(3rem,env(safe-area-inset-bottom,0px)+2rem)] sm:px-6",
+        PAGE_GUTTER,
+        "mx-auto w-full pb-[max(3rem,env(safe-area-inset-bottom,0px)+2rem)]",
         flush ? "pt-0" : "pt-4 sm:pt-6",
-        narrow ? "max-w-3xl" : "max-w-7xl",
+        narrow ? PAGE_MAX_NARROW : PAGE_MAX,
         className
       )}
     >

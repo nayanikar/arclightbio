@@ -80,6 +80,8 @@ venv/
 **/*.jpeg
 **/*.webp
 **/*.gif
+!public/marketing/
+!public/marketing/**
 
 # --- Accidental npm artifact filenames ---
 arclight-bio@*

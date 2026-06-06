@@ -17,7 +17,7 @@ export function OpportunityMetaBadges({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
-      {schemaVersion === 3 && (
+      {schemaVersion === 3 && opportunity.parent_domain && (
         <span
           className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.04em]"
           style={{
@@ -25,10 +25,7 @@ export function OpportunityMetaBadges({
             color: "#1A6B63",
           }}
         >
-          v3
-          {opportunity.parent_domain
-            ? ` · ${parentDomainLabel(opportunity.parent_domain)}`
-            : ""}
+          {parentDomainLabel(opportunity.parent_domain)}
         </span>
       )}
       {schemaVersion === 2 && (

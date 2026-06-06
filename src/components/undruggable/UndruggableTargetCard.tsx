@@ -102,7 +102,7 @@ export function UndruggableTargetCard({
                 borderColor: "rgba(15, 26, 46, 0.12)",
                 color: "var(--color-text-tertiary)",
               }}
-              title="Eligible for periodic re-scan as modality science evolves"
+              title="May be reconsidered on a manual target re-screen — no automatic literature watch yet"
             >
               <RefreshCw className="h-3 w-3" />
               Rescan

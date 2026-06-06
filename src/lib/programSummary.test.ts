@@ -59,7 +59,7 @@ describe("programSummary", () => {
   it("builds discovery thesis from lead hypothesis and intervention", () => {
     const summary = buildProgramSummaryDisplay(baseOpp());
     assert.match(summary, /HK2 drives Warburg/);
-    assert.match(summary, /proposed intervention: SLC2A1/);
+    assert.match(summary, /via SLC2A1/);
   });
 
   it("does not propose undruggable primary as intervention", () => {
@@ -86,8 +86,8 @@ describe("programSummary", () => {
       ],
       pipelineBlocked: true,
     });
-    assert.doesNotMatch(summary, /proposed intervention: HK2/);
-    assert.match(summary, /proposed intervention: SLC2A1/);
+    assert.doesNotMatch(summary, /via HK2/);
+    assert.match(summary, /via SLC2A1/);
   });
 
   it("shows not pursued when all targets undruggable", () => {
@@ -105,7 +105,7 @@ describe("programSummary", () => {
       undruggableTargets: [{ target_name: "HK2" }],
       pipelineBlocked: true,
     });
-    assert.match(summary, /direct target modulation not pursued/);
-    assert.doesNotMatch(summary, /proposed intervention/);
+    assert.match(summary, /target modulation not pursued/);
+    assert.doesNotMatch(summary, /via /);
   });
 });

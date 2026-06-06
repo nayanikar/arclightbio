@@ -22,6 +22,7 @@ import { V3SessionMetaPills } from "@/components/opportunity/V3SessionMetaPills"
 import { V3SectionLabel } from "@/components/opportunity/v3/V3Panel";
 import { V3InfoCallout, V3LabeledBlock } from "@/components/opportunity/v3/V3Typography";
 import { V3StructuredProse } from "@/components/opportunity/v3/V3StructuredProse";
+import { shortenForField } from "@/lib/compressProse";
 import { buildProgramSummaryDisplay } from "@/lib/programSummary";
 import {
   blockedReason,
@@ -249,7 +250,9 @@ export function OpportunityPageV3({ obj: initialObj, id, reconnect }: Opportunit
                       <span className="font-mono text-[10px] uppercase tracking-wide text-white/40">
                         Population
                       </span>
-                      <span className="mt-0.5 block">{liveObj.population_definition.definition}</span>
+                      <span className="mt-0.5 block">
+                        {shortenForField(liveObj.population_definition.definition, 22)}
+                      </span>
                     </p>
                   )}
                 </div>
@@ -296,7 +299,7 @@ export function OpportunityPageV3({ obj: initialObj, id, reconnect }: Opportunit
                     className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em]"
                     style={{ color: "var(--v3-amber)" }}
                   >
-                    Phase 2 · drug development
+                    Drug development
                   </span>
                   <div className="h-px flex-1" style={{ background: "rgba(15,26,46,0.1)" }} />
                 </div>
@@ -412,12 +415,11 @@ export function OpportunityPageV3({ obj: initialObj, id, reconnect }: Opportunit
                       Undruggable targets
                     </p>
                     <div className="mt-4">
-                      <V3InfoCallout title="Global undruggable registry">
+                      <V3InfoCallout title="Cross-session registry">
                         These targets are saved across discovery programs. Future runs automatically
-                        avoid proposing the same undruggable routes for the same reasoning. As
-                        structural biology and modality science evolve, Arclight will rescan this
-                        registry; when a target becomes tractable, updated discovery reports will
-                        reflect that change.
+                        avoid repeating the same undruggable routes. Targets marked rescan-eligible
+                        may be reconsidered when you manually re-run target screening on a program —
+                        there is no automatic literature watch on this registry yet.
                       </V3InfoCallout>
                     </div>
                     <ul className="mt-4 space-y-3">
@@ -503,7 +505,7 @@ export function OpportunityPageV3({ obj: initialObj, id, reconnect }: Opportunit
           style={{ borderColor: "rgba(15, 26, 46, 0.08)" }}
         >
           <Link
-            href="/"
+            href="/dashboard"
             className="text-xs underline-offset-2 hover:underline"
             style={{ color: "var(--color-text-tertiary)" }}
           >

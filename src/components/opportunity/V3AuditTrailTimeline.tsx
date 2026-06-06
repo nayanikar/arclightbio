@@ -12,6 +12,7 @@ import {
 } from "@/lib/trailLabels";
 import { useOpportunityStore } from "@/store/opportunityStore";
 import { cn } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/urlSafety";
 
 function formatTime(ts: string): string {
   return new Date(ts).toLocaleTimeString([], {
@@ -82,10 +83,13 @@ function TrailRow({ entry }: { entry: AgentTrailEntry }) {
 
         {entry.sources && entry.sources.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {entry.sources.map((source) => (
+            {entry.sources.map((source) => {
+              const href = safeExternalHref(source.url);
+              if (!href) return null;
+              return (
               <a
                 key={`${entry.id}-${source.url}-${source.label}`}
-                href={source.url}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
@@ -100,7 +104,8 @@ function TrailRow({ entry }: { entry: AgentTrailEntry }) {
                 <span className="truncate">{sourceTypeLabel(source.type)}</span>
                 <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />
               </a>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

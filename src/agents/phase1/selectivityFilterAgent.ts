@@ -12,9 +12,11 @@ import {
   loadPhase1Context,
 } from "./shared";
 
-const SYSTEM = `You are the Selectivity Filter Agent for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Selectivity Filter Agent for Arclight Bio discovery.
 Select exactly 3 causation hypotheses that identify a selective intervention point.
 Each must preserve anchor linkage and specify where selectivity is achievable.
+
+Each statement: one sentence, max 18 words. Plain language, not academic prose.
 
 Return JSON:
 {

@@ -56,6 +56,7 @@
 
   html {
     overflow-x: hidden;
+    scroll-padding-top: var(--app-header-height);
     scroll-padding-bottom: 2rem;
   }
 
@@ -76,6 +77,11 @@
 
   .font-display {
     font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  }
+
+  .font-brand {
+    font-family: var(--font-brand), Georgia, "Times New Roman", serif;
+    font-optical-sizing: auto;
   }
 
   .zone-act {
@@ -207,4 +213,68 @@
 
 .animate-lp {
   animation: lp 1.8s infinite;
+}
+
+@keyframes homeMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes homeMeshDrift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3%, 2%) scale(1.04);
+  }
+}
+
+@keyframes homeMeshDriftReverse {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-2%, -3%) scale(1.03);
+  }
+}
+
+@keyframes homeHeroFloat {
+  0%,
+  100% {
+    transform: translateY(-50%) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(calc(-50% - 8px)) rotate(2deg);
+  }
+}
+
+.home-marquee-track {
+  animation: homeMarquee 28s linear infinite;
+}
+
+.home-mesh-drift {
+  animation: homeMeshDrift 18s ease-in-out infinite;
+}
+
+.home-mesh-drift-reverse {
+  animation: homeMeshDriftReverse 22s ease-in-out infinite;
+}
+
+.home-hero-float {
+  animation: homeHeroFloat 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-marquee-track,
+  .home-mesh-drift,
+  .home-mesh-drift-reverse,
+  .home-hero-float {
+    animation: none;
+  }
 }

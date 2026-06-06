@@ -18,7 +18,7 @@ export async function POST(
     }
     if (obj.schema_version !== 3) {
       return NextResponse.json(
-        { error: "Revise query is only supported for V3 opportunities" },
+        { error: "Revise query is not supported for this program version" },
         { status: 400 }
       );
     }

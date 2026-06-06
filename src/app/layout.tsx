@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Newsreader } from "next/font/google";
+import { IBM_Plex_Sans, Instrument_Serif, Newsreader } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { Providers } from "@/components/Providers";
@@ -16,8 +16,15 @@ const newsreader = Newsreader({
   variable: "--font-display",
 });
 
+/** Wordmark — editorial precision for clinical discovery (distinct from page titles). */
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-brand",
+});
+
 export const metadata: Metadata = {
-  title: "Arclight Bio — Opportunity Space",
+  title: "Arclight Bio — Discovery Program",
   description:
     "The discovery engine that finds what your experts don't know to look for",
   themeColor: "#FDFAF5",
@@ -34,7 +41,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${ibmPlexSans.variable} ${newsreader.variable} font-sans antialiased`}>
+      <body
+        className={`${ibmPlexSans.variable} ${newsreader.variable} ${instrumentSerif.variable} font-sans antialiased`}
+      >
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

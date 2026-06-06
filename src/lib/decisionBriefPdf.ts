@@ -211,7 +211,7 @@ export async function generateDecisionBriefPdf(
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   doc.text(
-    "CONFIDENTIAL — Arclight Bio · Opportunity Space",
+    "CONFIDENTIAL — Arclight Bio · Discovery Program",
     PAGE_WIDTH / 2,
     PAGE_HEIGHT - MARGIN,
     { align: "center" }

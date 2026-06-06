@@ -16,7 +16,7 @@ const STEP_LABELS: Record<string, string> = {
   "phase1:selectivity_filter": "Selectivity filter",
   "phase1:selectivity_rank": "Selectivity ranking",
   "phase1:selectivity_targets": "Selectivity target ranking",
-  "phase1:complete": "Phase 1 complete",
+  "phase1:complete": "Discovery funnel complete",
   "phase2:target_screen": "Target druggability screen",
   "phase2:drug_check": "Existing drug check",
   "phase2:ip_fto": "IP & FTO analysis",
@@ -25,7 +25,7 @@ const STEP_LABELS: Record<string, string> = {
   "phase2:tpp": "TPP blueprint",
   "phase2:risk_scores": "Risk scoring & IND planning",
   "phase2:ind_package": "IND package assembly",
-  "phase2:complete": "Phase 2 complete",
+  "phase2:complete": "Program build complete",
 };
 
 const AGENT_LABELS: Record<string, string> = {

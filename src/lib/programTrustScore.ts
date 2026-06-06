@@ -111,18 +111,18 @@ export function computeProgramTrustScore(input: {
 
 export const PROGRAM_TRUST_LABELS: Record<
   ProgramTrustLabel,
-  { title: string; description: string }
+  { tier: string; hint: string }
 > = {
   exploratory: {
-    title: "Exploratory confidence",
-    description: "Early funnel coverage or limited mechanistic evidence — treat as hypothesis-generating.",
+    tier: "Exploratory",
+    hint: "Early funnel · limited evidence depth",
   },
   moderate: {
-    title: "Moderate discovery confidence",
-    description: "Reasonable funnel retention and chain evidence — suitable for further diligence.",
+    tier: "Moderate",
+    hint: "Solid funnel · reasonable evidence",
   },
   strong: {
-    title: "Strong discovery confidence",
-    description: "High funnel coverage and mechanistic coherence — strong candidate for portfolio review.",
+    tier: "Strong",
+    hint: "Full funnel · strong mechanistic signal",
   },
 };

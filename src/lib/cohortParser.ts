@@ -3,6 +3,7 @@ import type {
   CohortParseResult,
 } from "@/types/V3Pipeline";
 import type { ParentDomain } from "@/types/V3Pipeline";
+import { assertCohortCsvWithinLimits } from "@/lib/cohortLimits";
 
 const REQUIRED_COLUMNS = [
   "patient_id",
@@ -115,6 +116,8 @@ export function parseCohortCsv(
     cohortName?: string;
   }
 ): CohortParseResult {
+  assertCohortCsvWithinLimits(csvText);
+
   const warnings: string[] = [];
   const lines = csvText
     .replace(/^\uFEFF/, "")

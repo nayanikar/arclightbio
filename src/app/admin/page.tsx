@@ -125,7 +125,7 @@ export default function AdminPage() {
       <PageContent narrow flush className="space-y-4">
         <button
           type="button"
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/dashboard")}
           className="text-sm hover:underline"
           style={{ color: "var(--color-text-tertiary)" }}
         >

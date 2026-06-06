@@ -101,7 +101,7 @@ export default function OpportunityPage() {
         <PageContent flush>
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-              Opportunity not found
+              Discovery program not found
             </p>
             <p className="max-w-sm text-xs" style={{ color: "var(--color-text-tertiary)" }}>
               This session may have been deleted or the link is invalid.

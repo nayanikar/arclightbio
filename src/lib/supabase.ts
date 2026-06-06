@@ -2,17 +2,29 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 let supabaseAdmin: SupabaseClient | null = null;
 
+function resolveAdminKey(): string | undefined {
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceRole) return serviceRole;
+
+  // Dev-only fallback: never use anon key as admin client in production.
+  if (process.env.NODE_ENV === "production") {
+    return undefined;
+  }
+
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+}
+
 export function getSupabaseAdmin(): SupabaseClient {
   if (supabaseAdmin) return supabaseAdmin;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = resolveAdminKey();
 
   if (!url || !key) {
     throw new Error(
-      "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+      process.env.NODE_ENV === "production"
+        ? "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+        : "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY for local dev)."
     );
   }
 
@@ -23,22 +35,6 @@ export function getSupabaseAdmin(): SupabaseClient {
     },
   });
   return supabaseAdmin;
-}
-
-export function getSupabaseClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    throw new Error("Supabase not configured.");
-  }
-
-  return createClient(url, key, {
-    global: {
-      fetch: (input, init) =>
-        fetch(input, { ...init, cache: "no-store" }),
-    },
-  });
 }
 
 const PLACEHOLDER_PATTERNS = [
@@ -65,9 +61,7 @@ function isValidSupabaseUrl(url: string): boolean {
 
 export function isSupabaseConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = resolveAdminKey();
 
   return (
     isRealEnvValue(url) &&

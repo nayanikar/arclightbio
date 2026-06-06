@@ -3,57 +3,52 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { NavDrawer } from "./NavDrawer";
-import { observatoryNavItem, primaryNavItems } from "./navConfig";
-
-const PAGE_LABELS: Record<string, string> = {
-  "/": "Dashboard",
-  "/discover": "Discover",
-  "/undruggable": "Undruggable",
-  "/admin": "Admin",
-};
-
-function pageLabel(pathname: string): string | null {
-  if (PAGE_LABELS[pathname]) return PAGE_LABELS[pathname];
-  if (pathname.startsWith("/opportunity/")) return "Discovery";
-  return null;
-}
+import { primaryNavItems } from "./navConfig";
+import { pageShell } from "./pageLayout";
+import { cn } from "@/lib/utils";
 
 export function AppHeader() {
-  const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [observatoryUrl, setObservatoryUrl] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
+  const isHome = pathname === "/";
 
   useEffect(() => {
-    fetch("/api/spacebase/observatory")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { url?: string } | null) => {
-        if (data?.url) setObservatoryUrl(data.url);
-      })
-      .catch(() => {});
-  }, []);
+    if (!isHome) {
+      setScrolled(true);
+      return;
+    }
 
-  const navItems = useMemo(() => {
-    const items = [...primaryNavItems];
-    if (observatoryUrl) items.push(observatoryNavItem(observatoryUrl));
-    return items;
-  }, [observatoryUrl]);
+    setScrolled(false);
 
-  const currentPage = pageLabel(pathname);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 48);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isHome]);
+
+  const solidHeader = !isHome || scrolled;
 
   return (
     <>
       <header
-        className="sticky top-0 z-30 border-b backdrop-blur-md"
+        className={cn(
+          "sticky top-0 z-30 border-b backdrop-blur-md transition-[background,border-color,box-shadow] duration-300",
+          solidHeader ? "shadow-sm" : "border-transparent bg-transparent shadow-none backdrop-blur-none"
+        )}
         style={{
-          borderColor: "rgba(15, 26, 46, 0.08)",
-          background: "rgba(248, 245, 239, 0.92)",
+          borderColor: solidHeader ? "rgba(15, 26, 46, 0.08)" : "transparent",
+          background: solidHeader ? "rgba(248, 245, 239, 0.92)" : "transparent",
           height: "var(--app-header-height)",
         }}
       >
-        <div className="mx-auto flex h-full max-w-7xl items-center gap-3 px-4 sm:px-6">
+        <div className={cn(pageShell, "flex h-full items-center gap-3")}>
           <button
             type="button"
             aria-label="Open navigation menu"
@@ -65,35 +60,34 @@ export function AppHeader() {
             <Menu className="h-5 w-5" />
           </button>
 
-          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
+          <Link
+            href="/"
+            className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90"
+          >
             <Image
               src="/favicon.svg"
-              alt="Arclight Bio"
+              alt=""
               width={32}
               height={32}
               className="h-8 w-8 shrink-0 rounded-[6px]"
               priority
             />
-            <div className="min-w-0">
-              <p
-                className="font-display text-sm font-semibold leading-none truncate"
-                style={{ color: "var(--v3-navy)" }}
-              >
-                <span className="sm:hidden">Arclight</span>
-                <span className="hidden sm:inline">Arclight Bio</span>
-              </p>
-              <p
-                className="mt-0.5 truncate text-[10px]"
-                style={{ color: "var(--color-text-tertiary)" }}
-              >
-                {currentPage ?? "Opportunity Space"}
-              </p>
-            </div>
+            <span
+              className="font-brand text-[15px] font-normal leading-none tracking-[-0.01em] sm:text-[17px]"
+              style={{ color: "var(--v3-navy)" }}
+            >
+              <span className="sm:hidden">Arclight</span>
+              <span className="hidden sm:inline">Arclight Bio</span>
+            </span>
           </Link>
         </div>
       </header>
 
-      <NavDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} items={navItems} />
+      <NavDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        items={primaryNavItems}
+      />
     </>
   );
 }

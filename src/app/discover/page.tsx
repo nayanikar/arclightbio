@@ -168,7 +168,7 @@ function DiscoverPageInner() {
     }
 
     if (!cohortCsv.trim()) {
-      setError("Patient cohort CSV is required for V3 discovery");
+      setError("Patient cohort CSV is required to start discovery");
       return;
     }
     if (cohortError || !cohortPreview) {
@@ -234,13 +234,13 @@ function DiscoverPageInner() {
         subtitle={
           reviseMode
             ? "Update clinical question or parent domain; cohort is retained on the existing session"
-            : "Define parent domain, upload patient cohort, and seed the V3 hypothesis funnel"
+            : "Define parent domain, upload patient cohort, and seed the hypothesis funnel"
         }
       />
 
       <PageContent narrow flush className="space-y-6">
         <Panel
-          title="Configure V3 session"
+          title="Configure discovery session"
           bodyClassName="space-y-6"
         >
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -487,7 +487,7 @@ function DiscoverPageInner() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {reviseMode ? "Revising…" : "Initialising V3 pipeline…"}
+                  {reviseMode ? "Revising…" : "Initialising discovery…"}
                 </>
               ) : reviseMode ? (
                 "Revise & resume"

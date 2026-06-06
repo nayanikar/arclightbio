@@ -11,6 +11,7 @@ import {
 } from "@/lib/dashboardLayout";
 
 export { filterDashboardOpportunities } from "@/lib/dashboardLayout";
+import { shortenForField } from "@/lib/compressProse";
 import { parentDomainLabel } from "@/lib/parentDomains";
 import { buildProgramSummaryDisplay } from "@/lib/programSummary";
 import type { ProgramTrustLabel } from "@/lib/programTrustScore";
@@ -62,7 +63,7 @@ export interface DashboardProgramView {
   challengeCount: number;
   updatedAgo: string;
   updatedAt: string;
-  sessionLabel: string | null;
+  serial: number;
   isRunning: boolean;
   agentCount: number;
   schemaVersion: 1 | 2 | 3;
@@ -107,14 +108,6 @@ export function getPhaseOrder(phase: string | null | undefined): number {
   return idx >= 0 ? idx : PHASE_ORDER.length;
 }
 
-function normalizeQuery(query?: string): string {
-  return (query ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function sessionShortId(id: string): string {
-  return id.slice(-4);
-}
-
 function resolveSubtitle(
   opp: OpportunityObject,
   title: string,
@@ -129,7 +122,7 @@ function resolveSubtitle(
   }
 
   const unmet = opp.hypothesis.unmet_need?.trim();
-  if (unmet) return truncate(unmet, 100);
+  if (unmet) return shortenForField(unmet, 18);
 
   if (phaseLabel) return phaseLabel;
 
@@ -138,17 +131,14 @@ function resolveSubtitle(
 
 export function toDashboardProgramView(
   opp: OpportunityObject,
-  duplicateQueries: Set<string>
+  serialById: Map<string, number>
 ): DashboardProgramView {
   const title = resolveTitle(opp);
   const phaseLabel = opp.v3_phase ? humanizeStep(opp.v3_phase) : null;
-  const normalizedQuery = normalizeQuery(opp.search_query);
-  const showSessionLabel =
-    normalizedQuery.length > 0 && duplicateQueries.has(normalizedQuery);
 
   return {
     id: opp.id,
-    title: truncate(title, 120),
+    title: truncate(title, 90),
     subtitle: resolveSubtitle(opp, title, phaseLabel),
     confidence: resolveConfidence(opp),
     confidenceLabel:
@@ -166,7 +156,7 @@ export function toDashboardProgramView(
     challengeCount: opp.challenges.length,
     updatedAgo: formatUpdatedAgoShort(opp.last_updated),
     updatedAt: opp.last_updated,
-    sessionLabel: showSessionLabel ? sessionShortId(opp.id) : null,
+    serial: serialById.get(opp.id) ?? 0,
     isRunning: opp.status === "agents_running",
     agentCount: getUniqueAgents(opp.evidence_cards).length,
     schemaVersion: (opp.schema_version ?? 1) as 1 | 2 | 3,
@@ -177,22 +167,15 @@ export function toDashboardProgramView(
 export function buildDashboardProgramViews(
   opportunities: OpportunityObject[]
 ): DashboardProgramView[] {
-  const queryCounts = new Map<string, number>();
-
-  for (const opp of opportunities) {
-    const q = normalizeQuery(opp.search_query);
-    if (!q) continue;
-    queryCounts.set(q, (queryCounts.get(q) ?? 0) + 1);
-  }
-
-  const duplicateQueries = new Set<string>();
-  for (const [q, count] of queryCounts) {
-    if (count > 1) duplicateQueries.add(q);
-  }
-
-  return opportunities.map((opp) =>
-    toDashboardProgramView(opp, duplicateQueries)
+  const serialOrder = [...opportunities].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+  const serialById = new Map(
+    serialOrder.map((opp, index) => [opp.id, index + 1])
+  );
+
+  return opportunities.map((opp) => toDashboardProgramView(opp, serialById));
 }
 
 export function computeDashboardMetrics(

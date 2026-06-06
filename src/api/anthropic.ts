@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ApiError, requireEnv } from "@/lib/http";
-import { withScientificWritingRules } from "@/lib/scientificLanguage";
+import {
+  withJsonFieldBrevity,
+  withScientificWritingRules,
+} from "@/lib/scientificLanguage";
 import {
   getActiveAbortSignal,
   PipelineAbortedError,
@@ -11,6 +14,8 @@ const MODEL = "claude-sonnet-4-20250514";
 export interface CallAgentOptions {
   temperature?: number;
   maxTokens?: number;
+  /** When true, systemPrompt is sent as-is (caller already applied writing rules). */
+  skipWritingRules?: boolean;
 }
 
 function throwIfPipelineAborted(signal?: AbortSignal): void {
@@ -37,7 +42,9 @@ export async function callAgent(
         model: MODEL,
         max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature,
-        system: withScientificWritingRules(systemPrompt),
+        system: options.skipWritingRules
+          ? systemPrompt
+          : withScientificWritingRules(systemPrompt),
         messages: [{ role: "user", content: userPrompt }],
       },
       signal ? { signal } : undefined
@@ -63,9 +70,9 @@ export async function callAgentJson<T>(
   options: CallAgentOptions = {}
 ): Promise<T> {
   const text = await callAgent(
-    systemPrompt + "\n\nRespond with valid JSON only, no markdown fences.",
+    `${withJsonFieldBrevity(systemPrompt)}\n\nRespond with valid JSON only, no markdown fences.`,
     userPrompt,
-    options
+    { ...options, skipWritingRules: true }
   );
   const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
   try {

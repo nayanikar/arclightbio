@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpportunityObject } from "@/lib/db";
 import { parseCohortCsv } from "@/lib/cohortParser";
+import { isCohortFileWithinLimits } from "@/lib/cohortLimits";
 import type { ParentDomain } from "@/types/V3Pipeline";
 import { isParentDomain } from "@/lib/parentDomains";
 import {
@@ -23,7 +24,7 @@ export async function POST(
     }
     if (obj.schema_version !== 3) {
       return NextResponse.json(
-        { error: "Add data is only supported for V3 opportunities" },
+        { error: "Add data is not supported for this program version" },
         { status: 400 }
       );
     }
@@ -36,8 +37,15 @@ export async function POST(
       const form = await request.formData();
       const file = form.get("cohortCsv");
       if (typeof file === "object" && file !== null && "text" in file) {
-        cohortCsv = await (file as File).text();
-        fileName = (file as File).name || fileName;
+        const cohortFile = file as File;
+        if (!isCohortFileWithinLimits(cohortFile.size)) {
+          return NextResponse.json(
+            { error: "Cohort CSV file is too large (max 5 MB)" },
+            { status: 400 }
+          );
+        }
+        cohortCsv = await cohortFile.text();
+        fileName = cohortFile.name || fileName;
       }
     } else {
       const body = await request.json();

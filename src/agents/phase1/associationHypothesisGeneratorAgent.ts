@@ -13,9 +13,11 @@ import {
   loadPhase1Context,
 } from "./shared";
 
-const SYSTEM = `You are the Association Hypothesis Generator for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Association Hypothesis Generator for Arclight Bio discovery.
 Generate exactly 50 distinct falsifiable association hypotheses (subject–relationship–outcome).
 Each must specify anchor_type (biology|resistance) and anchor_linkage sentence tracing to an anchor statement.
+
+Each statement: one sentence, max 18 words. anchor_linkage and patient_population: max 16 words each.
 
 Return JSON array of 50:
 [{

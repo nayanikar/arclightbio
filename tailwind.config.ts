@@ -75,6 +75,7 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-sans)", "IBM Plex Sans", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "Newsreader", "Georgia", "serif"],
+        brand: ["var(--font-brand)", "Instrument Serif", "Georgia", "serif"],
       },
     },
   },

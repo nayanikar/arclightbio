@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnchorProfile, AnchorProfiles } from "@/types/V3Pipeline";
+import { shortenForField, shortenForSupporting } from "@/lib/compressProse";
 import { formatMarketSizeUsdB, parseMarketSizeUsdB } from "@/lib/parseMarketSize";
 import { V3Panel } from "@/components/opportunity/v3/V3Panel";
 import { V3StructuredProse } from "@/components/opportunity/v3/V3StructuredProse";
@@ -75,7 +76,7 @@ function AnchorCard({
             Population
           </dt>
           <dd className="mt-1.5 leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
-            {profile.population || "—"}
+            {profile.population ? shortenForField(profile.population) : "—"}
           </dd>
         </div>
         <div>
@@ -90,7 +91,7 @@ function AnchorCard({
           </dd>
           {market.secondary && market.secondary !== market.primary && (
             <dd className="mt-1 text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
-              {market.secondary}
+              {shortenForSupporting(market.secondary)}
             </dd>
           )}
         </div>
@@ -104,7 +105,9 @@ function AnchorCard({
             Rationale
           </p>
           <div className="mt-1.5">
-            <V3StructuredProse content={profile.rationale} />
+            <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+              {shortenForField(profile.rationale, 24)}
+            </p>
           </div>
         </div>
       )}

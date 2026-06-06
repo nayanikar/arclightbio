@@ -75,14 +75,20 @@ describe("dashboardDisplay", () => {
     );
   });
 
-  it("assigns sessionLabel when duplicate queries exist", () => {
-    const sharedQuery = "cancer patients without dominant oncogenic mutation";
+  it("assigns stable serial numbers by created_at", () => {
     const views = buildDashboardProgramViews([
-      baseOpp({ id: "aaaaaaaa-bbbb-cccc-dddd-111111111111", search_query: sharedQuery }),
-      baseOpp({ id: "bbbbbbbb-bbbb-cccc-dddd-222222222222", search_query: sharedQuery }),
+      baseOpp({
+        id: "bbbbbbbb-bbbb-cccc-dddd-222222222222",
+        created_at: "2026-06-05T11:00:00.000Z",
+      }),
+      baseOpp({
+        id: "aaaaaaaa-bbbb-cccc-dddd-111111111111",
+        created_at: "2026-06-05T10:00:00.000Z",
+      }),
     ]);
-    assert.equal(views[0].sessionLabel, "1111");
-    assert.equal(views[1].sessionLabel, "2222");
+    const byId = Object.fromEntries(views.map((v) => [v.id, v.serial]));
+    assert.equal(byId["aaaaaaaa-bbbb-cccc-dddd-111111111111"], 1);
+    assert.equal(byId["bbbbbbbb-bbbb-cccc-dddd-222222222222"], 2);
   });
 
   it("computeDashboardMetrics counts paused and uses V3 trust for average", () => {
@@ -123,9 +129,12 @@ describe("dashboardDisplay", () => {
     assert.equal(sorted[0].confidence, 0.6);
   });
 
-  it("toDashboardProgramView omits sessionLabel for unique queries", () => {
-    const view = toDashboardProgramView(baseOpp(), new Set());
-    assert.equal(view.sessionLabel, null);
+  it("toDashboardProgramView includes serial from map", () => {
+    const serialById = new Map([
+      ["aaaaaaaa-bbbb-cccc-dddd-111111111111", 3],
+    ]);
+    const view = toDashboardProgramView(baseOpp(), serialById);
+    assert.equal(view.serial, 3);
   });
 
   it("resolveTitle prefers discovery_thesis_title from cache snapshot", () => {
@@ -157,6 +166,6 @@ describe("dashboardDisplay", () => {
         },
       ],
     });
-    assert.match(resolveTitle(opp), /proposed intervention: SLC2A1/);
+    assert.match(resolveTitle(opp), /via SLC2A1/);
   });
 });

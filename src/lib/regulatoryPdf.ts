@@ -220,7 +220,7 @@ export async function generateRegulatoryPdf(
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   doc.text(
-    "CONFIDENTIAL — Arclight Bio · Opportunity Space",
+    "CONFIDENTIAL — Arclight Bio · Discovery Program",
     PAGE_WIDTH / 2,
     y,
     { align: "center" }
@@ -438,7 +438,7 @@ export async function generateRegulatoryPdf(
   newPage();
   addSectionHeading("Certification of AI-Assisted Submission");
   addWrapped(
-    "This package was assembled by Opportunity Space, an AI-native discovery platform developed by Arclight Bio. All evidence items are traceable to their original public data sources via the provenance hashes above. This package has been reviewed by a qualified human expert prior to use in any regulatory context."
+    "This package was assembled by Discovery Program, an AI-native discovery platform developed by Arclight Bio. All evidence items are traceable to their original public data sources via the provenance hashes above. This package has been reviewed by a qualified human expert prior to use in any regulatory context."
   );
   y += 16;
   addWrapped("Expert review: _______________");
@@ -448,7 +448,7 @@ export async function generateRegulatoryPdf(
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   doc.text(
-    "Arclight Bio · Opportunity Space · Nucleate NY BioHack 2026",
+    "Arclight Bio · Discovery Program",
     PAGE_WIDTH / 2,
     y,
     { align: "center" }

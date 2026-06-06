@@ -102,7 +102,6 @@ export function NavDrawer({ open, onClose, items }: NavDrawerProps) {
           <p className="text-[10px] uppercase tracking-wider text-white/35">
             Living Discovery Engine
           </p>
-          <p className="mt-1 text-[10px] text-white/35">Nucleate NY BioHack 2026</p>
         </div>
       </aside>
     </>

@@ -13,7 +13,7 @@ import {
   resolveCohort,
 } from "./shared";
 
-const SYSTEM = `You are the Anchor Population Agent for Arclight Bio V3 Phase 1.
+const SYSTEM = `You are the Anchor Population Agent for Arclight Bio discovery.
 Define two high-ROI anchor populations per the SME spec:
 1. Biology anchor — core disease biology driving the program
 2. Resistance anchor — treatment failure / resistance context motivating the query
@@ -25,6 +25,10 @@ SME rules for program_hypothesis_sentence:
 - Anchor on the defining population criterion from the user query (e.g. absence of dominant oncogenic driver), NOT on a specific mutation class or mechanism.
 - Cohort biomarkers mentioning loss-of-function (LOF) are supporting context only — do NOT elevate LOF, synthetic-lethal, or tumor-suppressor language to the program thesis unless the query explicitly requires LOF as the primary thesis.
 - Biology and resistance anchor_statement values must be falsifiable subject–relationship–outcome sentences tied to population + resistance context, not mechanism-first LOF claims.
+
+Brevity (strict):
+- program_hypothesis_sentence: max 18 words, one sentence — this becomes the program headline.
+- population, rationale, anchor_statement: each one sentence, 12–20 words.
 
 Return JSON:
 {

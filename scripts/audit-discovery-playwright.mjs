@@ -87,12 +87,12 @@ async function main() {
   await page.screenshot({ path: path.join(outDir, "02-opportunity-early.png"), fullPage: true });
 
   // Dashboard
-  await page.goto(`${base}/`, { waitUntil: "networkidle", timeout: 60000 });
+  await page.goto(`${base}/dashboard`, { waitUntil: "networkidle", timeout: 60000 });
   await page.waitForTimeout(2000);
   const dashTitle = await page.locator("h1").first().textContent();
   findings.push({
     check: "dashboard_loads",
-    pass: dashTitle?.includes("Opportunity queue") ?? false,
+    pass: dashTitle?.includes("Discovery programs") ?? false,
     detail: dashTitle,
   });
   await page.screenshot({ path: path.join(outDir, "03-dashboard.png"), fullPage: true });

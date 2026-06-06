@@ -1,13 +1,17 @@
 import type { HypothesisRecord, OpportunityObject } from "@/types/OpportunityObject";
 import type { RankedTarget } from "@/types/V3Pipeline";
+import { shortenForHeadline } from "@/lib/compressProse";
 import {
   isPrimaryUndruggable,
   type UndruggableRef,
 } from "@/lib/pipelineBlocked";
 
+export type ProgramSummaryMode = "headline" | "full";
+
 export interface ProgramSummaryOptions {
   undruggableTargets?: UndruggableRef[];
   pipelineBlocked?: boolean;
+  mode?: ProgramSummaryMode;
 }
 
 function formatTargetIntervention(target: RankedTarget): string | null {
@@ -21,9 +25,10 @@ function formatTargetIntervention(target: RankedTarget): string | null {
 }
 
 function formatIntervention(
-  hypothesis?: HypothesisRecord | null,
-  undruggableTargets: UndruggableRef[] = [],
-  pipelineBlocked = false
+  hypothesis: HypothesisRecord | null | undefined,
+  undruggableTargets: UndruggableRef[],
+  pipelineBlocked: boolean,
+  mode: ProgramSummaryMode
 ): string | null {
   if (!hypothesis) return null;
   const ranked = hypothesis.ranked_targets ?? [];
@@ -46,12 +51,12 @@ function formatIntervention(
       return name && !isPrimaryUndruggable(name, undruggableTargets);
     });
     if (nextDruggable) {
-      return formatTargetIntervention(nextDruggable);
+      return formatTargetIntervention(nextDruggable, mode);
     }
     return null;
   }
 
-  return formatTargetIntervention(primary);
+  return formatTargetIntervention(primary, mode);
 }
 
 export function resolveLeadHypothesis(
@@ -87,21 +92,31 @@ export function buildProgramSummaryDisplay(
   const lead = leadHypothesis ?? resolveLeadHypothesis(obj);
   const undruggableTargets = options.undruggableTargets ?? [];
   const pipelineBlocked = options.pipelineBlocked ?? false;
+  const mode = options.mode ?? "headline";
 
-  const statement =
+  const rawStatement =
     lead?.statement?.trim() ||
     obj.program_hypothesis_sentence?.trim() ||
     obj.hypothesis.statement?.trim() ||
     obj.search_query?.trim() ||
     "Discovery program";
 
+  const statement =
+    mode === "headline"
+      ? shortenForHeadline(rawStatement, 18)
+      : rawStatement;
+
   const intervention = formatIntervention(
     lead,
     undruggableTargets,
-    pipelineBlocked
+    pipelineBlocked,
+    mode
   );
 
   if (intervention) {
+    if (mode === "headline") {
+      return `${statement} — via ${intervention}`;
+    }
     return `${statement} — proposed intervention: ${intervention}`;
   }
 
@@ -112,6 +127,9 @@ export function buildProgramSummaryDisplay(
       pipelineBlocked ||
       (primaryName && isPrimaryUndruggable(primaryName, undruggableTargets))
     ) {
+      if (mode === "headline") {
+        return `${statement} — target modulation not pursued`;
+      }
       return `${statement} — direct target modulation not pursued`;
     }
   }
