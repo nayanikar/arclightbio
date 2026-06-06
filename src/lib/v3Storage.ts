@@ -3,7 +3,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase";
 let v3SupabaseReady: boolean | undefined;
 
 /** True when V3 tables/columns exist in Supabase; otherwise V3 uses file store overlay. */
-export async function useV3SupabaseDb(): Promise<boolean> {
+export async function isV3SupabaseDbEnabled(): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
   if (v3SupabaseReady !== undefined) return v3SupabaseReady;
 

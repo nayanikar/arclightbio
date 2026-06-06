@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { HypothesisRecord, OpportunityObject } from "@/types/OpportunityObject";
+import type { HypothesisRecord, OpportunityObject, BlackboardState } from "@/types/OpportunityObject";
 import type {
   CalibrationRegistryEntry,
   CohortParseResult,
@@ -27,7 +27,7 @@ import {
 } from "@/lib/db";
 import { placeholderHypothesis } from "@/lib/hypothesisContext";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase";
-import { useV3SupabaseDb } from "@/lib/v3Storage";
+import { isV3SupabaseDbEnabled } from "@/lib/v3Storage";
 import * as fileStore from "@/lib/fileStore";
 import * as v3FileStore from "@/lib/v3FileStore";
 
@@ -81,7 +81,7 @@ export async function saveCohort(
     uploaded_at: now,
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error: cohortError } = await supabase.from("patient_cohorts").insert({
       id: cohort.id,
@@ -131,7 +131,7 @@ export async function getCohortForOpportunity(
 ): Promise<CohortRecord | null> {
   if (!cohortId) return null;
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data: cohortRow, error } = await supabase
       .from("patient_cohorts")
@@ -146,7 +146,6 @@ export async function getCohortForOpportunity(
       .eq("cohort_id", cohortId)
       .order("patient_id", { ascending: true });
 
-    const cohort = cohortRow as PatientCohort & { domain_summary: PatientCohort["domain_summary"] };
     return toCohortRecord(
       {
         id: cohortRow.id as string,
@@ -204,7 +203,7 @@ export async function createOpportunityObjectV3(
     blackboard_state: { completedSteps: [] },
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase
       .from("opportunity_objects")
@@ -249,7 +248,7 @@ export async function createOpportunityObjectV3(
 
 export async function loadV3Context(obj: OpportunityObject): Promise<OpportunityObject> {
   if ((obj.schema_version ?? 1) !== 3) return obj;
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const fresh = await getOpportunityObject(obj.id);
     return fresh ?? obj;
   }
@@ -266,7 +265,7 @@ export async function updateV3OpportunityFields(
     ...updates,
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase
       .from("opportunity_objects")
@@ -342,7 +341,7 @@ export async function createV3Hypothesis(
     target_family_context: input.target_family_context ?? null,
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("hypotheses").insert({
       id: record.id,
@@ -387,14 +386,14 @@ export async function saveV3Hypotheses(
   if (stage) {
     const existing = await listHypotheses(opportunityId);
     const toDelete = existing.filter((h) => h.hypothesis_stage === stage);
-    if ((await useV3SupabaseDb()) && toDelete.length > 0) {
+    if ((await isV3SupabaseDbEnabled()) && toDelete.length > 0) {
       const supabase = getSupabaseAdmin();
       await supabase
         .from("hypotheses")
         .delete()
         .eq("opportunity_object_id", opportunityId)
         .eq("hypothesis_stage", stage);
-    } else if (!(await useV3SupabaseDb()) && toDelete.length > 0) {
+    } else if (!(await isV3SupabaseDbEnabled()) && toDelete.length > 0) {
       const kept = existing.filter((h) => h.hypothesis_stage !== stage);
       await fileStore.fileStoreClearHypotheses(opportunityId);
       for (const h of kept) {
@@ -418,7 +417,7 @@ export async function saveV3Hypotheses(
     );
   }
 
-  if (!(await useV3SupabaseDb())) {
+  if (!(await isV3SupabaseDbEnabled())) {
     const existingV3 = await v3FileStore.fileStoreListV3Hypotheses(opportunityId);
     const kept =
       stage != null
@@ -437,7 +436,7 @@ export async function getDrugDiscoveryAssessment(
   opportunityId: string,
   hypothesisId: string
 ): Promise<DrugDiscoveryAssessmentRecord | null> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("drug_discovery_assessments")
@@ -509,7 +508,7 @@ export async function upsertDrugDiscoveryAssessment(
     updated_at: now,
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("drug_discovery_assessments").upsert(
       {
@@ -537,7 +536,7 @@ export async function getIndRegulatoryPackage(
   opportunityId: string,
   hypothesisId: string
 ): Promise<IndRegulatoryPackageRecord | null> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("ind_regulatory_packages")
@@ -647,7 +646,7 @@ export async function upsertIndRegulatoryPackage(
     updated_at: now,
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("ind_regulatory_packages").upsert(
       {
@@ -692,7 +691,7 @@ export async function insertUndruggableTarget(
     created_at: new Date().toISOString(),
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("undruggable_targets").insert({
       id: record.id,
@@ -717,7 +716,7 @@ export async function insertUndruggableTarget(
 export async function listUndruggableTargets(
   opportunityId: string
 ): Promise<UndruggableTargetRecord[]> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("undruggable_targets")
@@ -733,7 +732,7 @@ export async function listUndruggableTargets(
 }
 
 export async function listCalibrationRegistry(): Promise<CalibrationRegistryEntry[]> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("calibration_registry")
@@ -757,7 +756,7 @@ export async function promoteToCalibrationRegistry(
     promoted_at: new Date().toISOString(),
   };
 
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("calibration_registry").insert({
       id: record.id,
@@ -927,7 +926,7 @@ function normalizeFunnelRecords(
   const expected = FUNNEL_STAGE_COUNTS[stage];
   if (!expected) return records;
 
-  let normalized = records.slice(0, expected);
+  const normalized = records.slice(0, expected);
   while (normalized.length < expected) {
     const idx = normalized.length;
     normalized.push({
@@ -945,7 +944,7 @@ function normalizeFunnelRecords(
 }
 
 export async function listGlobalUndruggableTargets(): Promise<UndruggableTargetRecord[]> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("undruggable_targets")
@@ -985,7 +984,7 @@ export async function readV3FileOverlayHypotheses(
   const byId = new Map<string, HypothesisRecord>();
   for (const h of fromStore) byId.set(h.id, h);
   for (const h of fromV3) byId.set(h.id, h as HypothesisRecord);
-  return [...byId.values()].sort(
+  return Array.from(byId.values()).sort(
     (a, b) => (a.rank ?? 999) - (b.rank ?? 999)
   );
 }
@@ -1028,7 +1027,7 @@ function hypothesisToSupabaseRow(
 export async function syncV3FileOverlayToSupabase(
   opportunityId: string
 ): Promise<boolean> {
-  if (!(await useV3SupabaseDb())) return false;
+  if (!(await isV3SupabaseDbEnabled())) return false;
 
   const supabase = getSupabaseAdmin();
   let synced = false;
@@ -1148,7 +1147,8 @@ export async function repairV3MisclassifiedFailure(
     await updateOpportunityObject(opportunityId, {
       status: "complete",
       blackboard_state: {
-        ...(row.blackboard_state as object),
+        completedSteps: completed,
+        ...(row.blackboard_state as Partial<BlackboardState>),
         lastError: undefined,
       },
     });
@@ -1192,7 +1192,8 @@ export async function repairV3MisclassifiedFailure(
       status: "complete",
       actionability_zone: "too_early",
       blackboard_state: {
-        ...(row.blackboard_state as object),
+        completedSteps: completed,
+        ...(row.blackboard_state as Partial<BlackboardState>),
         lastError: undefined,
         outcome: "phase1_complete_no_selectivity",
       },
@@ -1211,11 +1212,9 @@ export async function hydrateV3OpportunityObject(
   const fields = await v3FileStore.fileStoreGetV3OpportunityFields(obj.id);
   if (Object.keys(fields).length > 0) {
     for (const [key, value] of Object.entries(fields)) {
-      if (
-        value != null &&
-        (obj as Record<string, unknown>)[key] == null
-      ) {
-        (obj as Record<string, unknown>)[key] = value;
+      const mutable = obj as unknown as Record<string, unknown>;
+      if (value != null && mutable[key] == null) {
+        mutable[key] = value;
       }
     }
   }

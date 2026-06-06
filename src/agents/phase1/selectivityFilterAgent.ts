@@ -2,8 +2,8 @@ import { randomUUID } from "crypto";
 import { callAgentJson } from "@/api/anthropic";
 import type { OpportunityObject } from "@/types/OpportunityObject";
 import type { V3HypothesisRecord } from "@/types/V3Pipeline";
-import type { HypothesisRecord } from "@/types/OpportunityObject";
 import { listHypothesesByStage, saveV3Hypotheses, updateV3OpportunityFields } from "@/lib/v3Db";
+import { ensureGeneratedHeadline, HEADLINE_MAX_WORDS } from "@/lib/headlineProse";
 import { sanitizeScientificClaim } from "@/lib/scientificLanguage";
 import { funnelAgentConfig } from "@/lib/innovationProfile";
 import {
@@ -83,12 +83,19 @@ ${hypBlock}`,
     ? payload.hypotheses.slice(0, 3)
     : causation.slice(0, 3);
 
-  const records: V3HypothesisRecord[] = source.map((h, idx) => {
+  const records: V3HypothesisRecord[] = [];
+  for (let idx = 0; idx < source.length; idx++) {
+    const h = source[idx];
     const parent = causation.find((c) => c.id === h.id) ?? causation[idx];
-    return {
+    const statement = await ensureGeneratedHeadline(
+      sanitizeScientificClaim(h.statement ?? parent.statement),
+      HEADLINE_MAX_WORDS,
+      "selectivity hypothesis statement"
+    );
+    records.push({
       id: randomUUID(),
       opportunity_object_id: ctx.id,
-      statement: sanitizeScientificClaim(h.statement ?? parent.statement),
+      statement,
       falsifiability_statement: sanitizeScientificClaim(
         h.falsifiability_statement ?? parent.falsifiability_statement ?? parent.statement
       ),
@@ -108,8 +115,8 @@ ${hypBlock}`,
       ),
       direction_status: h.direction_status ?? "disputed",
       rank: idx + 1,
-    };
-  });
+    });
+  }
 
   await saveV3Hypotheses(ctx.id, records, "selectivity");
   await updateV3OpportunityFields(ctx.id, { v3_phase: "phase1:selectivity_filter" });

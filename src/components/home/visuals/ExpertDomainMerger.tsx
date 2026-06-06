@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { homeCopy } from "../homeCopy";
 import { staggerSlow, fadeUp } from "../homeMotion";
 
 export function ExpertDomainMerger() {

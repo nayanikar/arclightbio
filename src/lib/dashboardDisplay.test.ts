@@ -137,19 +137,19 @@ describe("dashboardDisplay", () => {
     assert.equal(view.serial, 3);
   });
 
-  it("resolveTitle prefers discovery_thesis_title from cache snapshot", () => {
+  it("resolveTitle uses agent-generated program_hypothesis_sentence without clipping", () => {
     const opp = baseOpp({
       schema_version: 3,
-      program_hypothesis_sentence: "Short program sentence",
-      discovery_thesis_title:
-        "Warburg program — proposed intervention: SLC2A1 (targeted intervention)",
+      program_hypothesis_sentence:
+        "Oncogene-negative refractory tumors may respond to NSD1 methyltransferase inhibition.",
       hypotheses: [
         {
           id: "h1",
           opportunity_object_id: "aaaaaaaa-bbbb-cccc-dddd-111111111111",
           rank: 1,
           is_outgroup: false,
-          statement: "HK2 drives Warburg metabolism",
+          statement:
+            "ARID1A loss-of-function mutations in treatment-refractory cancers create chromatin-metabolic vulnerabilities that are selectively targetable by NSD1 methyltransferase inhibitors through synthetic lethality",
           patient_population: "",
           unmet_need: "",
           org_positioning: "",
@@ -157,15 +157,18 @@ describe("dashboardDisplay", () => {
           ranked_targets: [
             {
               rank: 1,
-              target_name: "SLC2A1",
-              gene_symbol: "SLC2A1",
+              target_name: "NSD1",
+              gene_symbol: "NSD1",
               selectivity_feasibility: 0.7,
-              rationale: "GLUT1",
+              rationale: "Methyltransferase",
             },
           ],
         },
       ],
     });
-    assert.match(resolveTitle(opp), /via SLC2A1/);
+    assert.equal(
+      resolveTitle(opp),
+      "Oncogene-negative refractory tumors may respond to NSD1 methyltransferase inhibition."
+    );
   });
 });

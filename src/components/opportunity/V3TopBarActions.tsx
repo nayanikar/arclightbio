@@ -151,8 +151,12 @@ export function V3TopBarActions({
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-data-title"
+          onClick={() => !busy && setAddOpen(false)}
         >
-          <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-xl">
+          <div
+            className="w-full max-w-md rounded-xl border bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 id="add-data-title" className="font-display text-sm font-semibold">
               Add cohort data
             </h2>
@@ -192,8 +196,12 @@ export function V3TopBarActions({
           role="dialog"
           aria-modal="true"
           aria-labelledby="revise-title"
+          onClick={() => !busy && setReviseOpen(false)}
         >
-          <div className="w-full max-w-md rounded-xl border bg-white p-5 shadow-xl">
+          <div
+            className="w-full max-w-md rounded-xl border bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 id="revise-title" className="font-display text-sm font-semibold">
               Revise discovery query
             </h2>

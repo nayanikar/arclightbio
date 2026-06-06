@@ -14,10 +14,9 @@ import { SessionSummaryPanel } from "@/components/opportunity/SessionSummaryPane
 import { ModalityPanel } from "@/components/opportunity/ModalityPanel";
 import { ScoreStrip } from "@/components/opportunity/ScoreStrip";
 import { OpportunityTrailsPanel } from "@/components/opportunity/OpportunityTrailsPanel";
-import { SurveillancePauseButton } from "@/components/opportunity/SurveillancePanel";
 import { useOpportunityStore } from "@/store/opportunityStore";
 import { useSurveillanceSessionControls } from "@/hooks/useSurveillanceSessionControls";
-import type { EvidenceCard, OpportunityObject } from "@/types/OpportunityObject";
+import type { OpportunityObject } from "@/types/OpportunityObject";
 import { TopBar } from "@/components/layout/TopBar";
 import { cardVisibleForHypothesis } from "@/lib/hypothesisCards";
 
@@ -46,7 +45,6 @@ export function OpportunityPageV2({ obj: initialObj, id, reconnect }: Opportunit
     hypotheses.find((h) => !h.is_outgroup)?.id ??
     hypotheses[0]?.id;
   const [selectedId, setSelectedId] = useState<string | undefined>(defaultSelected);
-  const [highlightCardId, setHighlightCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (liveObj.top_hypothesis_id) {
@@ -123,7 +121,6 @@ export function OpportunityPageV2({ obj: initialObj, id, reconnect }: Opportunit
             searchQuery={liveObj.search_query ?? "Discovery program"}
             className="mt-4"
             onEvidenceCardClick={(id) => {
-              setHighlightCardId(id);
               document.getElementById(`evidence-card-${id}`)?.scrollIntoView({
                 behavior: "smooth",
                 block: "center",

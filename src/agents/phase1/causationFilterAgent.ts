@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { callAgentJson } from "@/api/anthropic";
 import type { OpportunityObject } from "@/types/OpportunityObject";
 import type { MechanisticChain } from "@/types/MechanisticChain";
-import type { HypothesisRecord } from "@/types/OpportunityObject";
 import type { V3HypothesisRecord } from "@/types/V3Pipeline";
 import { listHypothesesByStage, saveV3Hypotheses, updateV3OpportunityFields } from "@/lib/v3Db";
 import { getAllEvidenceCards } from "@/lib/db";

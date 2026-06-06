@@ -72,6 +72,8 @@ export interface BlackboardState {
   lastError?: string;
   lastEvent?: BlackboardAgentEvent;
   stage3_evaluation_summary?: string;
+  outcome?: string;
+  repairNote?: string;
 }
 
 export type OpportunityStatus =
@@ -258,7 +260,11 @@ export interface OpportunityObject extends V3OpportunityFields {
   decision_brief?: DecisionBrief | null;
   drug_discovery_assessment?: DrugDiscoveryAssessmentRecord | null;
   ind_package_v3?: IndRegulatoryPackageRecord | null;
-  undruggable_targets?: Array<{ target_name: string; reasoning: string }> | null;
+  undruggable_targets?: Array<{
+    target_name: string;
+    reasoning: string;
+    alternate_intervention?: string | null;
+  }> | null;
   /** Client cache field — precomputed discovery thesis for dashboard rehydration */
   discovery_thesis_title?: string | null;
 }

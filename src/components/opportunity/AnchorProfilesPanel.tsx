@@ -4,7 +4,6 @@ import type { AnchorProfile, AnchorProfiles } from "@/types/V3Pipeline";
 import { shortenForField, shortenForSupporting } from "@/lib/compressProse";
 import { formatMarketSizeUsdB, parseMarketSizeUsdB } from "@/lib/parseMarketSize";
 import { V3Panel } from "@/components/opportunity/v3/V3Panel";
-import { V3StructuredProse } from "@/components/opportunity/v3/V3StructuredProse";
 
 interface AnchorProfilesPanelProps {
   profiles: AnchorProfiles | null | undefined;

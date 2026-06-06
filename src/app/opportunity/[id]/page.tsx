@@ -47,6 +47,13 @@ export default function OpportunityPage() {
 
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const reset = useOpportunityStore((s) => s.reset);
+
+  useEffect(() => {
+    reset();
+    setLoaded(false);
+    setNotFound(false);
+  }, [id, reset]);
 
   useEffect(() => {
     const onSessionsUpdated = () => reloadOpportunity();
@@ -73,7 +80,7 @@ export default function OpportunityPage() {
       });
   }, [id, setOpportunity]);
 
-  if (!loaded && !opportunity) {
+  if (!loaded || opportunity?.id !== id) {
     return (
       <>
         <TopBar subtitle="Loading session…" compact />

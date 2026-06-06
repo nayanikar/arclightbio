@@ -1,6 +1,5 @@
 import type { HypothesisRecord, OpportunityObject } from "@/types/OpportunityObject";
 import type { RankedTarget } from "@/types/V3Pipeline";
-import { shortenForHeadline } from "@/lib/compressProse";
 import {
   isPrimaryUndruggable,
   type UndruggableRef,
@@ -22,41 +21,6 @@ function formatTargetIntervention(target: RankedTarget): string | null {
     (target as { recommended_modality?: string }).recommended_modality?.trim() ||
     "targeted intervention";
   return `${name} (${modality})`;
-}
-
-function formatIntervention(
-  hypothesis: HypothesisRecord | null | undefined,
-  undruggableTargets: UndruggableRef[],
-  pipelineBlocked: boolean,
-  mode: ProgramSummaryMode
-): string | null {
-  if (!hypothesis) return null;
-  const ranked = hypothesis.ranked_targets ?? [];
-  if (ranked.length === 0) {
-    if (pipelineBlocked || undruggableTargets.length > 0) {
-      return null;
-    }
-    return null;
-  }
-
-  const primary = ranked[0];
-  const primaryName = primary.target_name || primary.gene_symbol || "";
-
-  if (
-    pipelineBlocked ||
-    isPrimaryUndruggable(primaryName, undruggableTargets)
-  ) {
-    const nextDruggable = ranked.find((t) => {
-      const name = t.target_name || t.gene_symbol || "";
-      return name && !isPrimaryUndruggable(name, undruggableTargets);
-    });
-    if (nextDruggable) {
-      return formatTargetIntervention(nextDruggable, mode);
-    }
-    return null;
-  }
-
-  return formatTargetIntervention(primary, mode);
 }
 
 export function resolveLeadHypothesis(
@@ -84,55 +48,48 @@ export function resolveLeadHypothesis(
   );
 }
 
-export function buildProgramSummaryDisplay(
-  obj: OpportunityObject,
-  leadHypothesis?: HypothesisRecord | null,
-  options: ProgramSummaryOptions = {}
-): string {
-  const lead = leadHypothesis ?? resolveLeadHypothesis(obj);
-  const undruggableTargets = options.undruggableTargets ?? [];
-  const pipelineBlocked = options.pipelineBlocked ?? false;
-  const mode = options.mode ?? "headline";
-
-  const rawStatement =
-    lead?.statement?.trim() ||
+/**
+ * Discovery thesis for program hero and dashboard titles.
+ * Uses agent-generated program_hypothesis_sentence (≤18 words) — never display-clipped.
+ */
+export function buildProgramSummaryDisplay(obj: OpportunityObject): string {
+  return (
     obj.program_hypothesis_sentence?.trim() ||
     obj.hypothesis.statement?.trim() ||
     obj.search_query?.trim() ||
-    "Discovery program";
-
-  const statement =
-    mode === "headline"
-      ? shortenForHeadline(rawStatement, 18)
-      : rawStatement;
-
-  const intervention = formatIntervention(
-    lead,
-    undruggableTargets,
-    pipelineBlocked,
-    mode
+    "Discovery program"
   );
+}
 
-  if (intervention) {
-    if (mode === "headline") {
-      return `${statement} — via ${intervention}`;
-    }
-    return `${statement} — proposed intervention: ${intervention}`;
+/** @deprecated Used by tests and legacy callers exploring intervention formatting. */
+export function formatInterventionSummary(
+  hypothesis: HypothesisRecord | null | undefined,
+  undruggableTargets: UndruggableRef[],
+  pipelineBlocked: boolean
+): string | null {
+  if (!hypothesis) return null;
+  const ranked = hypothesis.ranked_targets ?? [];
+  if (ranked.length === 0) {
+    if (pipelineBlocked || undruggableTargets.length > 0) return null;
+    return null;
   }
 
-  if (pipelineBlocked || undruggableTargets.length > 0) {
-    const primary = lead?.ranked_targets?.[0];
-    const primaryName = primary?.target_name || primary?.gene_symbol;
-    if (
-      pipelineBlocked ||
-      (primaryName && isPrimaryUndruggable(primaryName, undruggableTargets))
-    ) {
-      if (mode === "headline") {
-        return `${statement} — target modulation not pursued`;
-      }
-      return `${statement} — direct target modulation not pursued`;
+  const primary = ranked[0];
+  const primaryName = primary.target_name || primary.gene_symbol || "";
+
+  if (
+    pipelineBlocked ||
+    isPrimaryUndruggable(primaryName, undruggableTargets)
+  ) {
+    const nextDruggable = ranked.find((t) => {
+      const name = t.target_name || t.gene_symbol || "";
+      return name && !isPrimaryUndruggable(name, undruggableTargets);
+    });
+    if (nextDruggable) {
+      return formatTargetIntervention(nextDruggable);
     }
+    return null;
   }
 
-  return statement;
+  return formatTargetIntervention(primary);
 }

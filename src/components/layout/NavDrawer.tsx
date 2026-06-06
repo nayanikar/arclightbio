@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNavigation } from "./NavigationProgress";
 import type { NavItemConfig } from "./navConfig";
 
 interface NavDrawerProps {
@@ -15,6 +16,13 @@ interface NavDrawerProps {
 
 export function NavDrawer({ open, onClose, items }: NavDrawerProps) {
   const pathname = usePathname();
+  const { pendingHref, pendingLabel, startNavigation } = useNavigation();
+  const isNavigatingFromDrawer = open && pendingHref !== null;
+
+  useEffect(() => {
+    if (!open || !pendingHref) return;
+    if (pathname === pendingHref) onClose();
+  }, [open, pendingHref, pathname, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,14 +71,17 @@ export function NavDrawer({ open, onClose, items }: NavDrawerProps) {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+        <nav className="relative flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           {items.map(({ href, label, icon: Icon, external }) => {
             const active = !external && pathname === href;
+            const pending = !external && pendingHref === href;
             const className = cn(
               "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               active
                 ? "bg-brand-purple/20 text-white"
-                : "text-white/60 hover:bg-white/5 hover:text-white"
+                : pending
+                  ? "bg-white/10 text-white"
+                  : "text-white/60 hover:bg-white/5 hover:text-white"
             );
 
             if (external) {
@@ -90,12 +101,40 @@ export function NavDrawer({ open, onClose, items }: NavDrawerProps) {
             }
 
             return (
-              <Link key={href} href={href} className={className} onClick={onClose}>
-                <Icon className="h-4 w-4 shrink-0" />
+              <Link
+                key={href}
+                href={href}
+                className={className}
+                aria-busy={pending}
+                onClick={() => {
+                  if (href === pathname) {
+                    onClose();
+                    return;
+                  }
+                  startNavigation(href, label);
+                }}
+              >
+                {pending ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                ) : (
+                  <Icon className="h-4 w-4 shrink-0" />
+                )}
                 {label}
               </Link>
             );
           })}
+
+          {isNavigatingFromDrawer && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-[#12101C]/90 backdrop-blur-[2px]"
+              aria-live="polite"
+            >
+              <Loader2 className="h-6 w-6 animate-spin text-white/90" />
+              <p className="mt-3 text-sm font-medium text-white/90">
+                Opening {pendingLabel ?? "page"}…
+              </p>
+            </div>
+          )}
         </nav>
 
         <div className="shrink-0 border-t border-white/10 px-5 py-4">

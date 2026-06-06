@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { homeCopy } from "./homeCopy";
 import { ScrollReveal } from "./ScrollReveal";
 

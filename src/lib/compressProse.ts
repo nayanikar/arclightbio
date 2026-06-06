@@ -30,7 +30,7 @@ export function clampChars(text: string, maxChars: number): string {
   return `${trimmed.slice(0, maxChars - 1).trimEnd()}…`;
 }
 
-/** Headline-length copy for discovery thesis and dashboard titles. */
+/** Display-time compression for non-headline UI only (not discovery thesis). */
 export function shortenForHeadline(text: string, maxWords = 16): string {
   const sentence = firstSentence(text);
   return clampWords(sentence, maxWords);

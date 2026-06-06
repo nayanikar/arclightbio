@@ -270,11 +270,25 @@
   animation: homeHeroFloat 6s ease-in-out infinite;
 }
 
+@keyframes navProgressIndeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.nav-progress-indeterminate {
+  animation: navProgressIndeterminate 1.1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-marquee-track,
   .home-mesh-drift,
   .home-mesh-drift-reverse,
-  .home-hero-float {
+  .home-hero-float,
+  .nav-progress-indeterminate {
     animation: none;
   }
 }

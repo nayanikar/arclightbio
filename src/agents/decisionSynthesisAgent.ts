@@ -20,7 +20,6 @@ import type {
   DecisionBrief,
   DecisionRecommendation,
   DecisionBriefBiomarkers,
-  DecisionBriefDiseaseModel,
 } from "@/types/DecisionBrief";
 
 const SYNTHESIS_SYSTEM = `You are a pharmaceutical portfolio strategist producing a board-ready decision brief from live discovery evidence.

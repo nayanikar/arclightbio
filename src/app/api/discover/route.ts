@@ -147,6 +147,14 @@ export async function POST(request: NextRequest) {
           innovationLevel,
         });
       }
+
+      return NextResponse.json(
+        {
+          error:
+            "Multipart discover requests require query, parentDomain, and cohortCsv file fields",
+        },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
@@ -157,6 +165,7 @@ export async function POST(request: NextRequest) {
       domainContext = "general",
       parentDomain,
       cohortCsv,
+      fileName,
       innovationLevel: rawInnovationLevel,
     } = body as {
       query: string;
@@ -165,6 +174,7 @@ export async function POST(request: NextRequest) {
       domainContext?: DomainContext;
       parentDomain?: string;
       cohortCsv?: string;
+      fileName?: string;
       innovationLevel?: string;
     };
 
@@ -174,6 +184,7 @@ export async function POST(request: NextRequest) {
         parentDomain,
         orgContextId,
         cohortCsv,
+        fileName,
         innovationLevel: parseInnovationLevel(rawInnovationLevel),
       });
     }
@@ -232,6 +243,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  const contexts = await listOrgContexts();
-  return NextResponse.json({ orgContexts: contexts });
+  try {
+    const contexts = await listOrgContexts();
+    return NextResponse.json({ orgContexts: contexts });
+  } catch (err) {
+    console.error("GET discover org contexts:", err);
+    return NextResponse.json({ orgContexts: DEFAULT_ORG_CONTEXTS });
+  }
 }

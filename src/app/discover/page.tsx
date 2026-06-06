@@ -22,6 +22,8 @@ import type { InnovationLevel, ParentDomain } from "@/types/V3Pipeline";
 import { innovationLevelLabel } from "@/lib/innovationProfile";
 import type { CohortParseResult } from "@/types/V3Pipeline";
 
+const COHORT_INPUT_ID = "cohort-csv-upload";
+
 const INNOVATION_OPTIONS: Array<{
   value: InnovationLevel;
   description: string;
@@ -77,6 +79,7 @@ function DiscoverPageInner() {
   const [cohortFileName, setCohortFileName] = useState("");
   const [cohortPreview, setCohortPreview] = useState<CohortParseResult | null>(null);
   const [cohortError, setCohortError] = useState("");
+  const [cohortReading, setCohortReading] = useState(false);
   const [reviseMode, setReviseMode] = useState(false);
 
   useEffect(() => {
@@ -94,7 +97,10 @@ function DiscoverPageInner() {
 
   useEffect(() => {
     fetch("/api/discover")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load org contexts (${r.status})`);
+        return r.json();
+      })
       .then((data) => {
         const loaded = data.orgContexts ?? [];
         setContexts(loaded);
@@ -103,7 +109,9 @@ function DiscoverPageInner() {
           setOrgContextId(defaultOrg.id);
         }
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error("Org context load failed:", err);
+      });
   }, []);
 
   useEffect(() => {
@@ -126,13 +134,43 @@ function DiscoverPageInner() {
   }, [cohortCsv, cohortFileName, parentDomain]);
 
   const handleFileUpload = (file: File) => {
+    setCohortError("");
+    setCohortReading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const text = reader.result as string;
       setCohortCsv(text);
       setCohortFileName(file.name);
+      setCohortReading(false);
+    };
+    reader.onerror = () => {
+      setCohortReading(false);
+      setCohortError("Could not read the file — re-save as CSV and try again");
     };
     reader.readAsText(file);
+  };
+
+  const handleCohortFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+    e.target.value = "";
+  };
+
+  const resetCohortFileInputs = () => {
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    document
+      .querySelectorAll<HTMLInputElement>("[data-cohort-file-input]")
+      .forEach((input) => {
+        input.value = "";
+      });
+  };
+
+  const handleCohortDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loading || cohortReading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileUpload(file);
   };
 
   const clearCohort = () => {
@@ -140,8 +178,11 @@ function DiscoverPageInner() {
     setCohortFileName("");
     setCohortPreview(null);
     setCohortError("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    resetCohortFileInputs();
   };
+
+  const cohortFileInputClassName =
+    "absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,8 +227,9 @@ function DiscoverPageInner() {
         body: JSON.stringify({
           query,
           parentDomain,
-          orgContextId,
+          orgContextId: orgContextId || undefined,
           cohortCsv,
+          fileName: cohortFileName || "cohort.csv",
           innovationLevel,
         }),
       });
@@ -353,34 +395,44 @@ function DiscoverPageInner() {
 
             <div className="space-y-3">
               <SectionLabel>Patient cohort CSV</SectionLabel>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file);
-                }}
-              />
               {!cohortCsv ? (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={handleCohortDrop}
                   className={cn(
-                    "flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 transition-colors",
-                    "border-[rgba(15,26,46,0.15)] bg-[var(--v3-paper)] hover:border-[var(--v3-teal)]/40"
+                    "relative flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 transition-colors",
+                    "border-[rgba(15,26,46,0.15)] bg-[var(--v3-paper)] hover:border-[var(--v3-teal)]/40",
+                    (loading || cohortReading) && "opacity-60"
                   )}
                 >
-                  <Upload className="h-8 w-8" style={{ color: "var(--v3-teal)" }} />
-                  <span className="text-sm font-medium" style={{ color: "var(--v3-navy)" }}>
-                    Upload cohort CSV
-                  </span>
-                  <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
-                    Required columns: patient_id, primary_diagnosis, comorbidities, biomarkers,
-                    resistance_status, notes
-                  </span>
-                </button>
+                  <input
+                    id={COHORT_INPUT_ID}
+                    ref={fileInputRef}
+                    data-cohort-file-input
+                    type="file"
+                    accept=".csv,text/csv,text/plain,application/vnd.ms-excel"
+                    disabled={loading || cohortReading}
+                    className={cohortFileInputClassName}
+                    onChange={handleCohortFileChange}
+                  />
+                  <div className="pointer-events-none flex flex-col items-center gap-2">
+                    {cohortReading ? (
+                      <Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--v3-teal)" }} />
+                    ) : (
+                      <Upload className="h-8 w-8" style={{ color: "var(--v3-teal)" }} />
+                    )}
+                    <span className="text-sm font-medium" style={{ color: "var(--v3-navy)" }}>
+                      {cohortReading ? "Reading CSV…" : "Upload cohort CSV"}
+                    </span>
+                    <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+                      Click to browse or drag and drop · Required columns: patient_id,
+                      primary_diagnosis, comorbidities, biomarkers, resistance_status, notes
+                    </span>
+                  </div>
+                </div>
               ) : (
                 <div
                   className="rounded-xl border px-4 py-4"
@@ -405,14 +457,30 @@ function DiscoverPageInner() {
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={clearCohort}
-                      className="rounded-md p-1 hover:bg-black/5"
-                      aria-label="Remove CSV"
-                    >
-                      <X className="h-4 w-4" style={{ color: "var(--color-text-tertiary)" }} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <span
+                        className="relative inline-flex cursor-pointer rounded-md px-2 py-1 text-xs font-medium hover:bg-black/5"
+                        style={{ color: "var(--v3-teal)" }}
+                      >
+                        <input
+                          data-cohort-file-input
+                          type="file"
+                          accept=".csv,text/csv,text/plain,application/vnd.ms-excel"
+                          disabled={loading || cohortReading}
+                          className={cohortFileInputClassName}
+                          onChange={handleCohortFileChange}
+                        />
+                        Replace
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearCohort}
+                        className="rounded-md p-1 hover:bg-black/5"
+                        aria-label="Remove CSV"
+                      >
+                        <X className="h-4 w-4" style={{ color: "var(--color-text-tertiary)" }} />
+                      </button>
+                    </div>
                   </div>
 
                   {cohortError && (
@@ -479,9 +547,10 @@ function DiscoverPageInner() {
               style={{ background: "var(--v3-navy)" }}
               disabled={
                 loading ||
+                cohortReading ||
                 !query.trim() ||
-                !orgContextId ||
-                (!reviseMode && (!cohortCsv.trim() || !!cohortError))
+                (!reviseMode &&
+                  (!cohortCsv.trim() || !!cohortError || !cohortPreview))
               }
             >
               {loading ? (

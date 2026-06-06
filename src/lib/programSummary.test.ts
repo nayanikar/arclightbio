@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildProgramSummaryDisplay } from "./programSummary";
+import {
+  buildProgramSummaryDisplay,
+  formatInterventionSummary,
+} from "./programSummary";
 import type { OpportunityObject } from "@/types/OpportunityObject";
 
 function baseOpp(): OpportunityObject {
@@ -56,13 +59,13 @@ function baseOpp(): OpportunityObject {
 }
 
 describe("programSummary", () => {
-  it("builds discovery thesis from lead hypothesis and intervention", () => {
+  it("uses stored program_hypothesis_sentence without clipping lead hypothesis", () => {
     const summary = buildProgramSummaryDisplay(baseOpp());
-    assert.match(summary, /HK2 drives Warburg/);
-    assert.match(summary, /via SLC2A1/);
+    assert.equal(summary, "Program framing sentence");
+    assert.doesNotMatch(summary, /via SLC2A1/);
   });
 
-  it("does not propose undruggable primary as intervention", () => {
+  it("formatInterventionSummary skips undruggable primary", () => {
     const opp = baseOpp();
     opp.hypotheses![0].ranked_targets = [
       {
@@ -80,17 +83,14 @@ describe("programSummary", () => {
         rationale: "GLUT1",
       },
     ];
-    const summary = buildProgramSummaryDisplay(opp, opp.hypotheses![0], {
-      undruggableTargets: [
-        { target_name: "HK2", reasoning: "Undruggable metabolic enzyme" },
-      ],
-      pipelineBlocked: true,
-    });
-    assert.doesNotMatch(summary, /via HK2/);
-    assert.match(summary, /via SLC2A1/);
+    const intervention = formatInterventionSummary(opp.hypotheses![0], [
+      { target_name: "HK2", reasoning: "Undruggable metabolic enzyme" },
+    ], true);
+    assert.match(intervention ?? "", /SLC2A1/);
+    assert.doesNotMatch(intervention ?? "", /HK2/);
   });
 
-  it("shows not pursued when all targets undruggable", () => {
+  it("formatInterventionSummary returns null when all targets undruggable", () => {
     const opp = baseOpp();
     opp.hypotheses![0].ranked_targets = [
       {
@@ -101,11 +101,11 @@ describe("programSummary", () => {
         rationale: "Warburg",
       },
     ];
-    const summary = buildProgramSummaryDisplay(opp, opp.hypotheses![0], {
-      undruggableTargets: [{ target_name: "HK2" }],
-      pipelineBlocked: true,
-    });
-    assert.match(summary, /target modulation not pursued/);
-    assert.doesNotMatch(summary, /via /);
+    const intervention = formatInterventionSummary(
+      opp.hypotheses![0],
+      [{ target_name: "HK2" }],
+      true
+    );
+    assert.equal(intervention, null);
   });
 });

@@ -49,7 +49,11 @@ export async function fetchOpportunitiesFromApi(): Promise<OpportunityObject[]> 
   if (!res.ok) throw new Error("Failed to load opportunities");
   const data = (await res.json()) as { opportunities?: OpportunityObject[] };
   const opportunities = data.opportunities ?? [];
-  persistOpportunitySnapshots(opportunities);
+  try {
+    persistOpportunitySnapshots(opportunities);
+  } catch (err) {
+    console.warn("Opportunity cache persist failed:", err);
+  }
   return sortDashboardOpportunities(opportunities);
 }
 

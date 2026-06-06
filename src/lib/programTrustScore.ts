@@ -28,6 +28,10 @@ function trustLabel(overall: number): ProgramTrustLabel {
   return "exploratory";
 }
 
+export function trustLabelFromOverall(overall: number): ProgramTrustLabel {
+  return trustLabel(overall);
+}
+
 function funnelCoverage(hypotheses: HypothesisRecord[]): number {
   const nonOutgroup = hypotheses.filter((h) => !h.is_outgroup);
   const association = nonOutgroup.filter((h) => h.hypothesis_stage === "association").length;

@@ -3,6 +3,7 @@ import type { OpportunityObject } from "@/types/OpportunityObject";
 import type { AnchorProfiles } from "@/types/V3Pipeline";
 import { updateOpportunityObject } from "@/lib/db";
 import { updateV3OpportunityFields } from "@/lib/v3Db";
+import { ensureGeneratedHeadline, HEADLINE_MAX_WORDS } from "@/lib/headlineProse";
 import { sanitizeScientificClaim } from "@/lib/scientificLanguage";
 import { funnelAgentConfig } from "@/lib/innovationProfile";
 import {
@@ -71,7 +72,7 @@ Program hypothesis must reflect the query-defined population as primary; treat L
   } catch {
     const domain = ctx.parent_domain ?? "the selected";
     payload = {
-      program_hypothesis_sentence: `The defined patient population in ${domain} exhibits a modifiable biology–resistance axis that motivates a targeted therapeutic program, independent of any single mutation class.`,
+      program_hypothesis_sentence: `Treatment-refractory ${domain} patients without dominant oncogenic drivers may harbor alternate biology–resistance axes for precision intervention.`,
       anchor_profiles: {
         biology: {
           population: population,
@@ -104,8 +105,13 @@ Program hypothesis must reflect the query-defined population as primary; treat L
     },
   };
 
-  const program_hypothesis_sentence = sanitizeScientificClaim(
+  let program_hypothesis_sentence = sanitizeScientificClaim(
     payload.program_hypothesis_sentence
+  );
+  program_hypothesis_sentence = await ensureGeneratedHeadline(
+    program_hypothesis_sentence,
+    HEADLINE_MAX_WORDS,
+    "anchor population program hypothesis"
   );
 
   await updateV3OpportunityFields(ctx.id, {

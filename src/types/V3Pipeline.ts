@@ -143,6 +143,10 @@ export interface ProgramTrustBreakdown {
   evidence_strength: number;
   biology_signal: number;
   label: "exploratory" | "moderate" | "strong";
+  /** LLM-generated explanation tied to program artifacts */
+  rationale?: string;
+  /** Whether score came from LLM judgment or deterministic formula */
+  assessment_source?: "llm" | "formula";
 }
 
 export interface RankedTarget {

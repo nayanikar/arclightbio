@@ -4,7 +4,7 @@ import type { EvidenceCard } from "@/types/OpportunityObject";
 import { getAllEvidenceCards, getOpportunityObject } from "@/lib/db";
 import { humanizeAgent, humanizeStep } from "@/lib/trailLabels";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { useV3SupabaseDb } from "@/lib/v3Storage";
+import { isV3SupabaseDbEnabled } from "@/lib/v3Storage";
 import * as v3FileStore from "@/lib/v3FileStore";
 
 function rowToEntry(row: Record<string, unknown>): AgentTrailEntry {
@@ -44,7 +44,7 @@ function entryToRow(entry: AgentTrailEntry) {
 }
 
 async function trailTableReady(): Promise<boolean> {
-  if (!(await useV3SupabaseDb())) return false;
+  if (!(await isV3SupabaseDbEnabled())) return false;
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("agent_trail_entries").select("id").limit(1);
   if (error?.code === "PGRST205" || error?.message?.includes("agent_trail_entries")) {

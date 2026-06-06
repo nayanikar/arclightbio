@@ -237,6 +237,8 @@ async function firstInClassNoveltyCheckForHypothesis(
 
   const trialsOk = trialResult.status === "fulfilled";
   const patentsOk = patentResult.status === "fulfilled";
+  void trialsOk;
+  void patentsOk;
   const activeTrials =
     trialResult.status === "fulfilled" ? trialResult.value : [];
   const patents =

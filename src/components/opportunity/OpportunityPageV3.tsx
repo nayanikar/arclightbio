@@ -143,10 +143,7 @@ export function OpportunityPageV3({ obj: initialObj, id, reconnect }: Opportunit
     selected
   );
 
-  const headerSentence = buildProgramSummaryDisplay(liveObj, selected, {
-    undruggableTargets: undruggable,
-    pipelineBlocked,
-  });
+  const headerSentence = buildProgramSummaryDisplay(liveObj);
 
   const trustScore =
     liveObj.program_trust_score ?? liveObj.program_trust_breakdown?.overall ?? null;

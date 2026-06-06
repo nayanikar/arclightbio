@@ -19,7 +19,7 @@ import type {
 } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
-import { useV3SupabaseDb } from "./v3Storage";
+import { isV3SupabaseDbEnabled } from "./v3Storage";
 import * as fileStore from "./fileStore";
 import * as v3FileStore from "./v3FileStore";
 import { domainContextToIndicationType } from "./domainContext";
@@ -365,7 +365,7 @@ export function mapHypothesisRow(row: Record<string, unknown>): HypothesisRecord
 export async function listHypotheses(
   opportunityId: string
 ): Promise<HypothesisRecord[]> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("hypotheses")
@@ -541,7 +541,7 @@ export async function updateHypothesis(
     >
   >
 ): Promise<void> {
-  if (await useV3SupabaseDb()) {
+  if (await isV3SupabaseDbEnabled()) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase
       .from("hypotheses")

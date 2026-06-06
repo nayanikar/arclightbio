@@ -21,3 +21,5 @@ export {
   falsificationExperimentDesignerAgent,
   falsificationExperimentDesignerAgentAll,
 } from "./falsificationExperimentDesignerAgent";
+export { discoveryThesisAgent } from "./discoveryThesisAgent";
+export { programConfidenceAgent, assessProgramConfidence } from "./programConfidenceAgent";

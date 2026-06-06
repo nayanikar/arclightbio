@@ -206,18 +206,27 @@ export function ProgramTrustBadge({
         </div>
       </div>
 
-      {expanded && breakdown && (
+          {expanded && breakdown && (
         <div
           className={cn(
             "mt-3 space-y-2 border-t pt-3",
             isHeader ? "border-white/12" : "border-[rgba(15,26,46,0.08)]"
           )}
         >
+          {breakdown.rationale && (
+            <p
+              className="text-xs leading-relaxed"
+              style={{ color: hintText }}
+            >
+              {breakdown.rationale}
+            </p>
+          )}
           <p
             className="mb-2 font-mono text-[9px] uppercase tracking-wide"
             style={{ color: labelMuted }}
           >
             What drives the score
+            {breakdown.assessment_source === "llm" ? " (LLM-assessed)" : breakdown.assessment_source === "formula" ? " (formula fallback)" : ""}
           </p>
           {METRIC_LABELS.map(({ key, short, accent: barAccent }) => (
             <MetricRow

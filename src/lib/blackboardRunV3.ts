@@ -18,6 +18,8 @@ import {
   selectivityTargetRankerAgent,
   targetFamilyContextAgent,
   falsificationExperimentDesignerAgent,
+  discoveryThesisAgent,
+  assessProgramConfidence,
 } from "@/agents/phase1";
 import {
   existingDrugCheckerAgent,
@@ -50,7 +52,6 @@ import { buildBlockedAssessment, mergeAssessment } from "@/agents/phase2/helpers
 import { getOrgContext } from "@/lib/db";
 import { applyTargetScreen } from "@/lib/targetDruggabilityGate";
 import { getOpportunityObject, updateOpportunityObject } from "@/lib/db";
-import { computeProgramTrustScore } from "@/lib/programTrustScore";
 import { getActionabilityZoneFromConfidence } from "@/lib/scoring";
 import {
   acquireBlackboardLock,
@@ -352,10 +353,9 @@ async function runPhase1(obj: OpportunityObject, completed: Set<string>, resume:
   if (!shouldSkipV3Step("phase1:complete", completed, resume)) {
     const top = selectivity.find((h) => h.rank === 1) ?? selectivity[0];
     const fresh = (await getOpportunityObject(id)) ?? obj;
-    const trust = computeProgramTrustScore({
-      hypotheses: fresh.hypotheses ?? [],
-      expert_domains: fresh.expert_domains,
-      cd2_associations: fresh.cd2_associations,
+    const trust = await assessProgramConfidence({
+      obj: fresh,
+      phase: "phase1_complete",
     });
     const actionability_zone = getActionabilityZoneFromConfidence(trust.overall);
 
@@ -454,7 +454,7 @@ async function runPhase2TargetScreen(
   } else {
     await mergeAssessment(obj.id, hypothesis.id, {
       pipeline_status: "active",
-      screened_primary_target: primary,
+      screened_primary_target: primary ?? undefined,
       blocked_reason: undefined,
     });
   }
@@ -488,10 +488,14 @@ async function runPhase2(
     if (screenResult.failed) return { failed: true as const };
     completed.add(screenKey);
 
-    if (screenOutcome?.hypothesis) {
-      activeHypothesis = screenOutcome.hypothesis;
+    const outcome = screenOutcome as {
+      blocked: boolean;
+      hypothesis: HypothesisRecord;
+    } | null;
+    if (outcome?.hypothesis) {
+      activeHypothesis = outcome.hypothesis;
     }
-    if (screenOutcome?.blocked) {
+    if (outcome?.blocked) {
       const completeKey = phase2CompleteStepKey(hid);
       if (!shouldSkipV3Step(completeKey, completed, resume)) {
         await markV3Step(id, completeKey);
@@ -664,10 +668,9 @@ export async function runBlackboardV3(
       const selectivityHypotheses = await listSelectivityHypotheses(opportunityId);
       if (selectivityHypotheses.length === 0) {
         const fresh = (await getOpportunityObject(opportunityId)) ?? obj;
-        const trust = computeProgramTrustScore({
-          hypotheses: fresh.hypotheses ?? [],
-          expert_domains: fresh.expert_domains,
-          cd2_associations: fresh.cd2_associations,
+        const trust = await assessProgramConfidence({
+          obj: fresh,
+          phase: "phase1_complete",
         });
         await updateOpportunityObject(opportunityId, {
           status: "complete",
@@ -705,10 +708,10 @@ export async function runBlackboardV3(
         completed.add("phase2:complete");
 
         const fresh = (await getOpportunityObject(opportunityId)) ?? obj;
-        const trust = computeProgramTrustScore({
-          hypotheses: fresh.hypotheses ?? [],
-          expert_domains: fresh.expert_domains,
-          cd2_associations: fresh.cd2_associations,
+        await discoveryThesisAgent(fresh);
+        const trust = await assessProgramConfidence({
+          obj: fresh,
+          phase: "phase2_complete",
         });
         const org = await getOrgContext(fresh.org_context_id);
         const actionability_zone = getActionabilityZoneFromConfidence(
