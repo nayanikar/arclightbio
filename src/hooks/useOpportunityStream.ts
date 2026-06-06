@@ -2,11 +2,19 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useOpportunityStore } from "@/store/opportunityStore";
+import type { AgentTrailEntry } from "@/types/AgentTrail";
 import type { BlackboardAgentEvent, EvidenceCard } from "@/types/OpportunityObject";
+import { SESSIONS_UPDATED_EVENT } from "@/lib/events";
 
 export function useOpportunityStream(opportunityId: string) {
-  const { addCard, updateScores, setStreaming, setAgentStatus, setBlackboardError } =
-    useOpportunityStore();
+  const {
+    addCard,
+    addTrailEntry,
+    updateScores,
+    setStreaming,
+    setAgentStatus,
+    setBlackboardError,
+  } = useOpportunityStore();
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const connect = useCallback(() => {
@@ -37,6 +45,15 @@ export function useOpportunityStream(opportunityId: string) {
       }
     });
 
+    es.addEventListener("trail", (event) => {
+      try {
+        const entry = JSON.parse(event.data) as AgentTrailEntry;
+        addTrailEntry(entry);
+      } catch (err) {
+        console.error("SSE trail parse error:", err);
+      }
+    });
+
     es.addEventListener("score", (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -64,6 +81,9 @@ export function useOpportunityStream(opportunityId: string) {
         /* optional payload */
       }
       setStreaming(false);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(SESSIONS_UPDATED_EVENT));
+      }
       es.close();
     });
 
@@ -86,6 +106,12 @@ export function useOpportunityStream(opportunityId: string) {
 
     es.addEventListener("paused", () => {
       setStreaming(false);
+      updateScores({
+        confidence_score: useOpportunityStore.getState().confidenceScore,
+        actionability_score: useOpportunityStore.getState().actionabilityScore,
+        actionability_zone: useOpportunityStore.getState().actionabilityZone,
+        status: "paused",
+      });
     });
 
     es.addEventListener("error", (event) => {
@@ -106,6 +132,7 @@ export function useOpportunityStream(opportunityId: string) {
   }, [
     opportunityId,
     addCard,
+    addTrailEntry,
     updateScores,
     setStreaming,
     setAgentStatus,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpportunityObject } from "@/lib/db";
-import { runBlackboard } from "@/lib/blackboard";
+import { runBlackboard, runBlackboardV2, runBlackboardV3 } from "@/lib/blackboard";
 
 export async function POST(
   request: NextRequest,
@@ -16,7 +16,13 @@ export async function POST(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const result = await runBlackboard(params.id, { force, resume });
+    const run =
+      obj.schema_version === 3
+        ? runBlackboardV3
+        : obj.schema_version === 2
+          ? runBlackboardV2
+          : runBlackboard;
+    const result = await run(params.id, { force, resume });
 
     if (!result.ok && result.reason === "lock_busy") {
       return NextResponse.json(

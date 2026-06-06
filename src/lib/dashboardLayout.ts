@@ -15,6 +15,7 @@ export const AGENT_PIP_COLORS: Record<AgentName, string> = {
   modality: "#8B5CF6",
 };
 
+/** @deprecated Use DashboardMetrics from dashboardDisplay.ts */
 export interface DashboardMetrics {
   active: number;
   actNow: number;
@@ -65,10 +66,19 @@ export function computeDashboardMetrics(
   return { active, actNow, tooEarly, avgConfidence };
 }
 
+export function sortByRecencyDesc(
+  opportunities: OpportunityObject[]
+): OpportunityObject[] {
+  return [...opportunities].sort(
+    (a, b) =>
+      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+  );
+}
+
 export function selectDashboardSlots(
   opportunities: OpportunityObject[]
 ): DashboardSlots {
-  const sorted = sortByConfidenceDesc(opportunities);
+  const sorted = sortByRecencyDesc(opportunities);
 
   const featured =
     sorted.find((o) => o.actionability_zone === "act_now") ??

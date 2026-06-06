@@ -1,13 +1,18 @@
-import type { OpportunityObject } from "@/types/OpportunityObject";
+import type { HypothesisRecord, OpportunityObject } from "@/types/OpportunityObject";
 import { callAgentJson } from "@/api/anthropic";
 import {
   getOpportunityObject,
   getOrgContext,
   getAllEvidenceCards,
   insertEvidenceCard,
+  updateHypothesis,
 } from "@/lib/db";
 import { findTargetListCard, type RankedTarget } from "@/lib/targetList";
-import type { ModalityAssessment } from "@/lib/modalityTypes";
+import type { ModalityAssessment, ModalityGateResult } from "@/lib/modalityTypes";
+import {
+  modalityToRegulatoryPathway,
+  normalizeDeclaredModality,
+} from "@/lib/modalityTypes";
 
 export type { ModalityAssessment };
 
@@ -27,6 +32,101 @@ Key infrastructure: ${a.key_infrastructure_requirement}
 Alternative: ${a.alternative_modality} — ${a.alternative_rationale}`
   );
   return `MODALITY RECOMMENDATION\n${"─".repeat(40)}\n${lines.join("\n\n")}`;
+}
+
+const MODALITY_GATE_SYSTEM = `You are a drug modality expert for Arclight Bio v2.
+Given a biomedical hypothesis, declare the primary drug modality.
+Use one of: small_molecule, mab, adc, rna, cell, gene.
+Return valid JSON with keys: declared_modality, modality_rationale, manufacturing_complexity (1-5), estimated_timeline_to_IND, org_fit_score (0-1), key_infrastructure_requirement.`;
+
+export async function modalityGateAgent(
+  obj: OpportunityObject,
+  hypothesis: HypothesisRecord
+): Promise<ModalityGateResult> {
+  const org = await getOrgContext(obj.org_context_id);
+  const platforms = org?.portfolio.platforms ?? [];
+
+  let gate: {
+    declared_modality: string;
+    modality_rationale: string;
+    manufacturing_complexity: number;
+    estimated_timeline_to_IND: string;
+    org_fit_score: number;
+    key_infrastructure_requirement: string;
+  };
+
+  let gateFromFallback = false;
+  try {
+    gate = await callAgentJson(
+      MODALITY_GATE_SYSTEM,
+      `Hypothesis: ${hypothesis.statement}
+Patient population: ${hypothesis.patient_population}
+Unmet need: ${hypothesis.unmet_need}
+Org platforms: ${platforms.join(", ") || "Not specified"}
+Is outgroup calibration control: ${hypothesis.is_outgroup}
+
+Declare the primary modality for developing this hypothesis.`
+    );
+  } catch {
+    gateFromFallback = true;
+    gate = {
+      declared_modality: "small_molecule",
+      modality_rationale:
+        "[Unverified default] Small-molecule declaration pending expert review — modality LLM unavailable.",
+      manufacturing_complexity: 2,
+      estimated_timeline_to_IND: "4-5 years",
+      org_fit_score: 0.5,
+      key_infrastructure_requirement: "Standard medicinal chemistry",
+    };
+  }
+
+  const declared_modality = normalizeDeclaredModality(gate.declared_modality);
+  const regulatory_pathway = modalityToRegulatoryPathway(declared_modality);
+
+  await updateHypothesis(hypothesis.id, {
+    declared_modality,
+    regulatory_pathway,
+  });
+
+  const result: ModalityGateResult = {
+    declared_modality,
+    regulatory_pathway,
+    modality_rationale: gate.modality_rationale,
+    manufacturing_complexity: gate.manufacturing_complexity,
+    estimated_timeline_to_IND: gate.estimated_timeline_to_IND,
+    org_fit_score: gate.org_fit_score,
+    key_infrastructure_requirement: gate.key_infrastructure_requirement,
+  };
+
+  await insertEvidenceCard(
+    obj.id,
+    {
+      content: `MODALITY DECLARATION (${regulatory_pathway} pathway): ${declared_modality.replace(/_/g, " ")} — ${gate.modality_rationale}`,
+      source_url: "",
+      source_type: "internal_reasoning",
+      contributing_agent: "modality",
+      is_modality_card: true,
+      quality_scores: {
+        sample_size: 0.5,
+        study_design: 0.6,
+        source_credibility: 0.75,
+        replication: 0.5,
+        recency: 0.85,
+        composite: 0.7,
+      },
+      regulatory_weight: 0.7,
+      raw_source_metadata: {
+        modality_gate: result,
+        hypothesis_id: hypothesis.id,
+        is_outgroup: hypothesis.is_outgroup,
+        modality_fallback: gateFromFallback,
+        partial: gateFromFallback,
+      },
+    },
+    { hypothesisId: hypothesis.id }
+  );
+
+  return result;
 }
 
 export async function modalityAgent(obj: OpportunityObject): Promise<void> {

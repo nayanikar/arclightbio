@@ -9,7 +9,7 @@ import { SESSIONS_UPDATED_EVENT, notifyOpportunitiesUpdated } from "@/lib/events
 export function useSurveillanceSessionControls() {
   const params = useParams();
   const id = params.id as string;
-  const { status, pauseSession, resumeSession, setOpportunity, addCard, setStreaming } =
+  const { status, pauseSession, resumeSession, setOpportunity, setStreaming } =
     useOpportunityStore();
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
@@ -21,33 +21,7 @@ export function useSurveillanceSessionControls() {
     const data = (await res.json()) as OpportunityObject & { error?: string };
     if (!data.id) return;
     setOpportunity(data);
-    for (const challenge of data.challenges) {
-      addCard({
-        id: challenge.id,
-        content: challenge.content,
-        source_url: "",
-        source_type: "fda",
-        contributing_agent: "regulatory",
-        timestamp: new Date().toISOString(),
-        quality_scores: {
-          sample_size: 0.5,
-          study_design: 0.5,
-          source_credibility: 0.5,
-          replication: 0.5,
-          recency: 0.5,
-          composite: 0.5,
-        },
-        regulatory_weight: 0.5,
-        raw_source_metadata: {},
-        is_challenge: true,
-        challenge_metadata: {
-          evidence_card_ref: challenge.evidence_card_ref,
-          score_impact: challenge.score_impact,
-          dimension: challenge.dimension,
-        },
-      });
-    }
-  }, [id, setOpportunity, addCard]);
+  }, [id, setOpportunity]);
 
   const handlePause = useCallback(async () => {
     if (pausing) return;
@@ -74,7 +48,7 @@ export function useSurveillanceSessionControls() {
   }, [id, pausing, pauseSession]);
 
   const handleResume = useCallback(async () => {
-    if (resuming || status !== "paused") return;
+    if (resuming || (status !== "paused" && status !== "surveillance")) return;
     setResuming(true);
     setResumeError(null);
     try {

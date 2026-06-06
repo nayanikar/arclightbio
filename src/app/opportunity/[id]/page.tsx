@@ -11,16 +11,15 @@ import { SessionSummaryPanel } from "@/components/opportunity/SessionSummaryPane
 import { ModalityPanel } from "@/components/opportunity/ModalityPanel";
 import { ScoreStrip } from "@/components/opportunity/ScoreStrip";
 import { OpportunityTrailsPanel } from "@/components/opportunity/OpportunityTrailsPanel";
-import { SurveillancePauseButton } from "@/components/opportunity/SurveillancePanel";
+import { OpportunityTopBarActions } from "@/components/opportunity/OpportunityTopBarActions";
+import { OpportunityPageV2 } from "@/components/opportunity/OpportunityPageV2";
+import { OpportunityPageV3 } from "@/components/opportunity/OpportunityPageV3";
 import { useOpportunityStream } from "@/hooks/useOpportunityStream";
 import { useSurveillanceSessionControls } from "@/hooks/useSurveillanceSessionControls";
 import { useOpportunityStore } from "@/store/opportunityStore";
 import type { OpportunityObject } from "@/types/OpportunityObject";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { OctagonPause } from "lucide-react";
-import { domainContextLabel } from "@/lib/domainContext";
 import { SESSIONS_UPDATED_EVENT } from "@/lib/events";
 
 export default function OpportunityPage() {
@@ -34,7 +33,6 @@ export default function OpportunityPage() {
     actionabilityZone,
     status,
     streamingCards,
-    addCard,
     blackboardError,
   } = useOpportunityStore();
   const {
@@ -49,8 +47,6 @@ export default function OpportunityPage() {
 
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
-
-  const canStopAgents = status === "agents_running";
 
   useEffect(() => {
     const onSessionsUpdated = () => reloadOpportunity();
@@ -69,114 +65,86 @@ export default function OpportunityPage() {
           return;
         }
         setOpportunity(data);
-        for (const card of data.evidence_cards) {
-          addCard(card);
-        }
-        for (const challenge of data.challenges) {
-          addCard({
-            id: challenge.id,
-            content: challenge.content,
-            source_url: "",
-            source_type: "fda",
-            contributing_agent: "regulatory",
-            timestamp: new Date().toISOString(),
-            quality_scores: {
-              sample_size: 0.5,
-              study_design: 0.5,
-              source_credibility: 0.5,
-              replication: 0.5,
-              recency: 0.5,
-              composite: 0.5,
-            },
-            regulatory_weight: 0.5,
-            raw_source_metadata: {},
-            is_challenge: true,
-            challenge_metadata: {
-              evidence_card_ref: challenge.evidence_card_ref,
-              score_impact: challenge.score_impact,
-              dimension: challenge.dimension,
-            },
-          });
-        }
         setLoaded(true);
       })
       .catch(() => {
         setNotFound(true);
         setLoaded(true);
       });
-  }, [id, setOpportunity, addCard]);
+  }, [id, setOpportunity]);
 
   if (!loaded && !opportunity) {
     return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <p className="text-sm text-gray-400">Loading opportunity…</p>
-      </div>
+      <>
+        <TopBar subtitle="Loading session…" compact />
+        <PageContent flush>
+          <div className="animate-pulse space-y-6">
+            <div className="h-40 rounded-xl bg-black/5" />
+            <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+              <div className="space-y-4">
+                <div className="h-32 rounded-xl bg-black/5" />
+                <div className="h-48 rounded-xl bg-black/5" />
+                <div className="h-48 rounded-xl bg-black/5" />
+              </div>
+              <div className="h-64 rounded-xl bg-black/5" />
+            </div>
+          </div>
+        </PageContent>
+      </>
     );
   }
 
   if (notFound || !opportunity) {
     return (
-      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="text-sm font-medium text-gray-700">Opportunity not found</p>
-        <p className="max-w-sm text-xs text-gray-400">
-          This session may have been deleted or the link is invalid.
-        </p>
-        <Link href="/discover">
-          <Button size="sm" className="bg-brand-purple hover:bg-brand-purple/90">
-            Start a new discovery
-          </Button>
-        </Link>
-      </div>
+      <>
+        <TopBar title="Discovery program" subtitle="Session unavailable" compact />
+        <PageContent flush>
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              Opportunity not found
+            </p>
+            <p className="max-w-sm text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+              This session may have been deleted or the link is invalid.
+            </p>
+            <Link href="/discover">
+              <Button size="sm" className="bg-brand-purple hover:bg-brand-purple/90">
+                Start a new discovery
+              </Button>
+            </Link>
+          </div>
+        </PageContent>
+      </>
     );
   }
 
   const obj = opportunity;
+  const schemaVersion = obj.schema_version ?? 1;
+
+  if (schemaVersion === 3) {
+    return <OpportunityPageV3 obj={obj} id={id} reconnect={reconnect} />;
+  }
+
+  if (schemaVersion === 2) {
+    return <OpportunityPageV2 obj={obj} id={id} reconnect={reconnect} />;
+  }
 
   return (
     <>
       <TopBar
-        title="Opportunity object"
-        subtitle={obj.search_query ?? obj.hypothesis.statement.slice(0, 72)}
+        title="Discovery session"
+        subtitle={obj.search_query ?? obj.hypothesis.statement.slice(0, 120)}
         badge={
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="capitalize text-xs">
-              {obj.mode ?? "speed"}
-            </Badge>
-            {obj.domain_context && obj.domain_context !== "general" && (
-              <Badge
-                variant="outline"
-                className="text-xs border-brand-purple/40 text-brand-purple"
-              >
-                {domainContextLabel(obj.domain_context)}
-              </Badge>
-            )}
-            <SurveillancePauseButton
-              status={status}
-              pausing={pausing}
-              resuming={resuming}
-              onPause={handlePause}
-              onResume={handleResume}
-            />
-            {canStopAgents && (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="bg-brand-coral hover:bg-brand-coral/90"
-                onClick={handlePause}
-                disabled={pausing}
-              >
-                <OctagonPause className="mr-2 h-4 w-4" />
-                {pausing ? "Stopping…" : "Stop agents"}
-              </Button>
-            )}
-            {actionabilityZone === "act_now" && (
-              <Link href={`/opportunity/${id}/regulatory`}>
-                <Button size="sm" className="bg-brand-teal hover:bg-brand-teal/90">
-                  Regulatory package
-                </Button>
-              </Link>
-            )}
-          </div>
+          <OpportunityTopBarActions
+            id={id}
+            status={status}
+            mode={obj.mode}
+            domainContext={obj.domain_context}
+            actionabilityZone={actionabilityZone}
+            pausing={pausing}
+            resuming={resuming}
+            onPause={handlePause}
+            onResume={handleResume}
+          />
         }
       />
 
@@ -204,14 +172,12 @@ export default function OpportunityPage() {
             )}
           </div>
         )}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 space-y-6">
             <OpportunityHeader
               searchQuery={obj.search_query}
               hypothesis={obj.hypothesis}
               status={status}
-              mode={obj.mode}
-              domainContext={obj.domain_context}
             />
             <HypothesisPanel
               hypothesis={obj.hypothesis}

@@ -14,9 +14,37 @@ import {
   detectSampleSize as scoreSampleSizeFromContent,
   detectStudyDesign as scoreStudyDesignFromContent,
 } from "@/lib/evidenceQuality";
+import { activeHypothesisContext } from "@/lib/hypothesisContext";
 
 const CHALLENGE_THRESHOLD = 0.65;
-const MAX_CHALLENGES = 3;
+const OUTGROUP_CHALLENGE_THRESHOLD = 0.68;
+const MAX_CHALLENGES_V1 = 3;
+const MAX_CHALLENGES_NOVEL = 2;
+const MAX_CHALLENGES_OUTGROUP = 5;
+
+function resolveMaxChallenges(): number {
+  const ctx = activeHypothesisContext.getStore();
+  if (ctx?.isOutgroup) return MAX_CHALLENGES_OUTGROUP;
+  if (ctx?.hypothesisId) return MAX_CHALLENGES_NOVEL;
+  return MAX_CHALLENGES_V1;
+}
+
+function resolveChallengeThreshold(): number {
+  const ctx = activeHypothesisContext.getStore();
+  if (ctx?.isOutgroup) return OUTGROUP_CHALLENGE_THRESHOLD;
+  return CHALLENGE_THRESHOLD;
+}
+
+function truncateExcerpt(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max).trimEnd()}…`;
+}
+
+async function refreshOpportunityScoresIfV1(obj: OpportunityObject): Promise<void> {
+  if ((obj.schema_version ?? 1) === 2) return;
+  await refreshScores(obj.id);
+}
 
 const DERISK_SYSTEM = `You are a regulatory strategy expert for drug development.
 Use standard clinical trial language: Phase 1/2/3, primary endpoint, inclusion/exclusion-aligned population, biomarker names.
@@ -231,31 +259,58 @@ function dimensionFailureMessage(
 }
 
 function buildChallengeContent(
+  obj: OpportunityObject,
   card: EvidenceCard,
   scores: QualityScores,
   scoreImpact: number
 ): string {
-  const failingMessages = (
-    Object.keys(scores) as (keyof QualityScores)[]
-  )
-    .filter((k) => k !== "composite" && scores[k] < CHALLENGE_THRESHOLD)
-    .sort((a, b) => scores[a] - scores[b])
-    .map((k) => dimensionFailureMessage(k, scores, card))
-    .filter((msg): msg is string => msg !== null);
+  const ctx = activeHypothesisContext.getStore();
+  const isOutgroup = ctx?.isOutgroup ?? false;
+  const threshold = resolveChallengeThreshold();
 
-  if (failingMessages.length === 0) {
-    const weak = weakestDimension(scores);
-    failingMessages.push(
-      `${weak.dimension.replace(/_/g, " ")} below threshold (${weak.value.toFixed(2)})`
-    );
-  }
+  const weak = weakestDimension(scores);
+  const dimMsg =
+    dimensionFailureMessage(weak.dimension, scores, card) ??
+    `${weak.dimension.replace(/_/g, " ")} below threshold (${scores[weak.dimension].toFixed(2)})`;
 
-  const impactPct = (scoreImpact * 100).toFixed(1);
-  return `${failingMessages.join(". ")}. Score impact: -${impactPct}% confidence.`;
+  const cardExcerpt = truncateExcerpt(
+    card.content.replace(/^\[[^\]]+\]\s*/, ""),
+    90
+  );
+  const hypExcerpt = truncateExcerpt(obj.hypothesis.statement, 100);
+  const qualityGap = (threshold - scores.composite).toFixed(2);
+
+  const pathwayNote =
+    ctx?.regulatoryPathway === "NDA"
+      ? "NDA pathway: dose-response, DDI, and metabolic stability must be addressed."
+      : ctx?.regulatoryPathway === "BLA"
+        ? "BLA pathway: immunogenicity, comparability, and CMC must be addressed."
+        : "";
+
+  const modalityNote = ctx?.declaredModality
+    ? `${ctx.declaredModality}: modality-specific safety and efficacy endpoints required.`
+    : "";
+
+  const rolePrefix = isOutgroup
+    ? "Outgroup calibration — crowded-field baseline:"
+    : "Novel thesis gap —";
+
+  const parts = [
+    `${rolePrefix} "${hypExcerpt}"`,
+    dimMsg,
+    `Evidence from ${card.contributing_agent}: "${cardExcerpt}" (quality ${scores.composite.toFixed(2)}, gap ${qualityGap})`,
+  ];
+  if (pathwayNote) parts.push(pathwayNote);
+  if (modalityNote) parts.push(modalityNote);
+  parts.push(`Score impact: −${(scoreImpact * 100).toFixed(1)}% confidence.`);
+
+  return parts.join(" ");
 }
 
 function computeScoreImpact(composite: number): number {
-  return Math.max(0.04, 0.05 + (CHALLENGE_THRESHOLD - composite) * 0.25);
+  const threshold = resolveChallengeThreshold();
+  const gap = Math.max(0, threshold - composite);
+  return Math.max(0.03, 0.04 + gap * 0.35);
 }
 
 function auditCard(
@@ -302,7 +357,7 @@ async function postChallenge(
   phase: string
 ): Promise<void> {
   const count = await getChallengeCount(obj.id);
-  if (count >= MAX_CHALLENGES) return;
+  if (count >= resolveMaxChallenges()) return;
 
   const derisk = await generateDeriskRecommendation(obj, challenge.content);
 
@@ -395,8 +450,8 @@ export async function regulatoryAgentForCards(
   cardIds: string[]
 ): Promise<void> {
   const challengeCount = await getChallengeCount(obj.id);
-  if (challengeCount >= MAX_CHALLENGES) {
-    await refreshScores(obj.id);
+  if (challengeCount >= resolveMaxChallenges()) {
+    await refreshOpportunityScoresIfV1(obj);
     return;
   }
 
@@ -432,8 +487,8 @@ export async function regulatoryAgent(
   phase: "early" | "full" = "full"
 ): Promise<void> {
   const challengeCount = await getChallengeCount(obj.id);
-  if (challengeCount >= MAX_CHALLENGES) {
-    await refreshScores(obj.id);
+  if (challengeCount >= resolveMaxChallenges()) {
+    await refreshOpportunityScoresIfV1(obj);
     return;
   }
 
@@ -488,8 +543,10 @@ async function challengeWeakestCards(
   phase: string
 ): Promise<ChallengeRunResult> {
   const existingChallengeCount = await getChallengeCount(obj.id);
-  const remainingSlots = Math.max(0, MAX_CHALLENGES - existingChallengeCount);
-  const capReached = existingChallengeCount >= MAX_CHALLENGES;
+  const maxChallenges = resolveMaxChallenges();
+  const threshold = resolveChallengeThreshold();
+  const remainingSlots = Math.max(0, maxChallenges - existingChallengeCount);
+  const capReached = existingChallengeCount >= maxChallenges;
 
   const auditedCards: AuditedCard[] = cardsToAudit.map((card) => ({
     card,
@@ -503,7 +560,7 @@ async function challengeWeakestCards(
       : 0;
 
   const eligible = auditedCards
-    .filter(({ scores }) => scores.composite < CHALLENGE_THRESHOLD)
+    .filter(({ scores }) => scores.composite < threshold)
     .sort((a, b) => {
       const priorityDiff =
         agentChallengePriority(a.card.contributing_agent) -
@@ -517,7 +574,7 @@ async function challengeWeakestCards(
     : eligible.slice(0, remainingSlots);
 
   if (capReached) {
-    await refreshScores(obj.id);
+    await refreshOpportunityScoresIfV1(obj);
   }
 
   for (const { card, scores } of cardsToChallenge) {
@@ -529,7 +586,7 @@ async function challengeWeakestCards(
       card,
       scores,
       {
-        content: buildChallengeContent(card, scores, scoreImpact),
+        content: buildChallengeContent(obj, card, scores, scoreImpact),
         dimension: weak.dimension,
         score_impact: scoreImpact,
       },

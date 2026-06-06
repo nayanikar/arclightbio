@@ -1,7 +1,10 @@
 "use client";
 
+import type { AgentTrailEntry } from "@/types/AgentTrail";
+import { deriveCurrentTrailActivity } from "@/lib/trailLabels";
 import type {
   ChangeLogEntry,
+  Challenge,
   EvidenceCard,
   OpportunityObject,
   ActionabilityZone,
@@ -13,6 +16,59 @@ import type { SurveillanceScanResult } from "@/lib/surveillance";
 import { notifyOpportunitiesUpdated } from "@/lib/events";
 import { persistOpportunitySnapshot } from "@/lib/opportunityCache";
 import { create } from "zustand";
+
+function challengeToCard(
+  challenge: Challenge,
+  hypothesisId?: string
+): EvidenceCard {
+  return {
+    id: challenge.id,
+    content: challenge.content,
+    source_url: "",
+    source_type: "fda",
+    contributing_agent: "regulatory",
+    timestamp: new Date().toISOString(),
+    hypothesis_id: hypothesisId,
+    quality_scores: {
+      sample_size: 0.5,
+      study_design: 0.5,
+      source_credibility: 0.5,
+      replication: 0.5,
+      recency: 0.5,
+      composite: 0.5,
+    },
+    regulatory_weight: 0.5,
+    raw_source_metadata: {},
+    is_challenge: true,
+    challenge_metadata: {
+      evidence_card_ref: challenge.evidence_card_ref,
+      score_impact: challenge.score_impact,
+      dimension: challenge.dimension,
+    },
+  };
+}
+
+export function buildStreamingCardsFromOpportunity(
+  obj: OpportunityObject
+): EvidenceCard[] {
+  if ((obj.schema_version ?? 1) !== 2 && (obj.schema_version ?? 1) !== 3) {
+    return [
+      ...obj.evidence_cards,
+      ...obj.challenges.map((ch) => challengeToCard(ch)),
+    ];
+  }
+
+  const cards: EvidenceCard[] = [...obj.evidence_cards];
+  for (const h of obj.hypotheses ?? []) {
+    for (const c of h.evidence_cards ?? []) {
+      cards.push({ ...c, hypothesis_id: h.id });
+    }
+    for (const ch of h.challenges ?? []) {
+      cards.push(challengeToCard(ch, h.id));
+    }
+  }
+  return cards;
+}
 
 interface OpportunityState {
   opportunity: OpportunityObject | null;
@@ -27,6 +83,8 @@ interface OpportunityState {
   selectedAgent: AgentName | null;
   blackboardError: string | null;
   lastAgentStatus: BlackboardAgentEvent | null;
+  trailEntries: AgentTrailEntry[];
+  currentTrailActivity: AgentTrailEntry | null;
 
   setOpportunity: (obj: OpportunityObject) => void;
   addCard: (card: EvidenceCard) => void;
@@ -36,6 +94,17 @@ interface OpportunityState {
     actionability_zone: ActionabilityZone;
     status?: OpportunityStatus;
     blackboard_error?: string | null;
+    schema_version?: 2 | 3;
+    top_hypothesis_id?: string | null;
+    hypotheses?: Array<{
+      id: string;
+      rank: number | null;
+      confidence_score: number;
+      actionability_score: number;
+      actionability_zone: ActionabilityZone;
+    }>;
+    outgroup_validation?: OpportunityObject["outgroup_validation"];
+    v3_phase?: string | null;
   }) => void;
   applySurveillanceResult: (result: SurveillanceScanResult) => void;
   pauseSession: (entry: ChangeLogEntry) => void;
@@ -44,6 +113,8 @@ interface OpportunityState {
   setSelectedAgent: (agent: AgentName | null) => void;
   setBlackboardError: (message: string | null) => void;
   setAgentStatus: (event: BlackboardAgentEvent | null) => void;
+  setTrailEntries: (entries: AgentTrailEntry[]) => void;
+  addTrailEntry: (entry: AgentTrailEntry) => void;
   reset: () => void;
 }
 
@@ -60,10 +131,13 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
   selectedAgent: null,
   blackboardError: null,
   lastAgentStatus: null,
+  trailEntries: [],
+  currentTrailActivity: null,
 
   setOpportunity: (obj) => {
     persistOpportunitySnapshot(obj);
     notifyOpportunitiesUpdated();
+    const streamingCards = buildStreamingCardsFromOpportunity(obj);
     set({
       opportunity: obj,
       confidenceScore: obj.confidence_score,
@@ -72,7 +146,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       status: obj.status,
       changeLog: obj.change_log,
       lastSurveillanceCheck: obj.surveillance_tags.last_checked_at ?? null,
-      streamingCards: obj.evidence_cards,
+      streamingCards,
       blackboardError: obj.blackboard_state?.lastError ?? null,
     });
   },
@@ -85,26 +159,53 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
     })),
 
   updateScores: (scores) => {
-    set((state) => ({
-      confidenceScore: scores.confidence_score,
-      actionabilityScore: scores.actionability_score,
-      actionabilityZone: scores.actionability_zone,
-      status: scores.status ?? state.status,
-      blackboardError:
-        scores.blackboard_error !== undefined
-          ? scores.blackboard_error
-          : state.blackboardError,
-      opportunity: state.opportunity
-        ? {
-            ...state.opportunity,
-            confidence_score: scores.confidence_score,
-            actionability_score: scores.actionability_score,
-            actionability_zone: scores.actionability_zone,
-            status: scores.status ?? state.opportunity.status,
-            last_updated: new Date().toISOString(),
-          }
-        : null,
-    }));
+    set((state) => {
+      let opportunity = state.opportunity;
+      if (opportunity && scores.hypotheses?.length) {
+        const patchById = new Map(scores.hypotheses.map((h) => [h.id, h]));
+        opportunity = {
+          ...opportunity,
+          confidence_score: scores.confidence_score,
+          actionability_score: scores.actionability_score,
+          actionability_zone: scores.actionability_zone,
+          status: scores.status ?? opportunity.status,
+          last_updated: new Date().toISOString(),
+          top_hypothesis_id:
+            scores.top_hypothesis_id ?? opportunity.top_hypothesis_id,
+          outgroup_validation:
+            scores.outgroup_validation ?? opportunity.outgroup_validation,
+          hypotheses: (opportunity.hypotheses ?? []).map((h) => {
+            const patch = patchById.get(h.id);
+            return patch ? { ...h, ...patch } : h;
+          }),
+        };
+      } else if (opportunity) {
+        opportunity = {
+          ...opportunity,
+          confidence_score: scores.confidence_score,
+          actionability_score: scores.actionability_score,
+          actionability_zone: scores.actionability_zone,
+          status: scores.status ?? opportunity.status,
+          v3_phase:
+            scores.v3_phase !== undefined
+              ? scores.v3_phase ?? undefined
+              : opportunity.v3_phase,
+          last_updated: new Date().toISOString(),
+        };
+      }
+
+      return {
+        confidenceScore: scores.confidence_score,
+        actionabilityScore: scores.actionability_score,
+        actionabilityZone: scores.actionability_zone,
+        status: scores.status ?? state.status,
+        blackboardError:
+          scores.blackboard_error !== undefined
+            ? scores.blackboard_error
+            : state.blackboardError,
+        opportunity,
+      };
+    });
     const opp = useOpportunityStore.getState().opportunity;
     if (opp) persistOpportunitySnapshot(opp);
     notifyOpportunitiesUpdated();
@@ -226,6 +327,22 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
   setSelectedAgent: (agent) => set({ selectedAgent: agent }),
   setBlackboardError: (message) => set({ blackboardError: message }),
   setAgentStatus: (event) => set({ lastAgentStatus: event }),
+  setTrailEntries: (entries) =>
+    set({
+      trailEntries: entries,
+      currentTrailActivity: deriveCurrentTrailActivity(entries),
+    }),
+  addTrailEntry: (entry) =>
+    set((state) => {
+      if (state.trailEntries.some((e) => e.id === entry.id)) {
+        return state;
+      }
+      const trailEntries = [...state.trailEntries, entry];
+      return {
+        trailEntries,
+        currentTrailActivity: deriveCurrentTrailActivity(trailEntries),
+      };
+    }),
   reset: () =>
     set({
       opportunity: null,
@@ -240,5 +357,7 @@ export const useOpportunityStore = create<OpportunityState>((set) => ({
       selectedAgent: null,
       blackboardError: null,
       lastAgentStatus: null,
+      trailEntries: [],
+      currentTrailActivity: null,
     }),
 }));

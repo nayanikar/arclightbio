@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/layout/TopBar";
 import { PageContent } from "@/components/layout/PageContent";
 import { Panel, SectionLabel } from "@/components/layout/Panel";
@@ -9,36 +9,88 @@ import { OrgContextSelector } from "@/components/org/OrgContextSelector";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { OrganizationContext } from "@/types/OrganizationContext";
-import type { DomainContext, EvidenceTier } from "@/types/OpportunityObject";
-import { tierDisplayLabel } from "@/lib/evidenceTier";
-import { DOMAIN_CONTEXTS } from "@/lib/domainContext";
-import { Search, Loader2, Zap, Microscope } from "lucide-react";
+import { Search, Loader2, Upload, FileSpreadsheet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   appendOpportunityId,
   opportunitySnapshotKey,
 } from "@/lib/opportunityCache";
 import { pickDefaultOrgContext } from "@/lib/orgContext";
+import { PARENT_DOMAIN_OPTIONS } from "@/lib/parentDomains";
+import { parseCohortCsv } from "@/lib/cohortParser";
+import type { InnovationLevel, ParentDomain } from "@/types/V3Pipeline";
+import { innovationLevelLabel } from "@/lib/innovationProfile";
+import type { CohortParseResult } from "@/types/V3Pipeline";
 
-interface ClassificationPreview {
-  tier: EvidenceTier;
-  prior_score: number;
-  reasoning: string;
-}
+const INNOVATION_OPTIONS: Array<{
+  value: InnovationLevel;
+  description: string;
+}> = [
+  {
+    value: "lowest",
+    description:
+      "Precedent-backed, clinically proximate mechanisms. Favors de-risked hypotheses experts would already consider.",
+  },
+  {
+    value: "medium",
+    description:
+      "Balances novel cross-context associations with mechanistic plausibility and falsifiable experimental paths.",
+  },
+  {
+    value: "highest",
+    description:
+      "Non-obvious, cross-domain hypotheses with weak literature support — surprising but falsifiable. Use when you explicitly want maximum novelty over precedent.",
+  },
+];
 
 export default function DiscoverPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-4 py-8 sm:px-6">
+          <div className="mx-auto max-w-3xl animate-pulse space-y-4">
+            <div className="h-8 w-48 rounded bg-black/5" />
+            <div className="h-4 w-full max-w-md rounded bg-black/5" />
+            <div className="mt-6 h-64 rounded-xl bg-black/5" />
+          </div>
+        </div>
+      }
+    >
+      <DiscoverPageInner />
+    </Suspense>
+  );
+}
+
+function DiscoverPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const reviseId = searchParams.get("revise");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"speed" | "depth">("speed");
-  const [domainContext, setDomainContext] = useState<DomainContext>("general");
+  const [parentDomain, setParentDomain] = useState<ParentDomain>("oncology");
+  const [innovationLevel, setInnovationLevel] = useState<InnovationLevel>("medium");
   const [contexts, setContexts] = useState<OrganizationContext[]>([]);
   const [orgContextId, setOrgContextId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [classification, setClassification] = useState<ClassificationPreview | null>(
-    null
-  );
-  const [classifying, setClassifying] = useState(false);
+  const [cohortCsv, setCohortCsv] = useState("");
+  const [cohortFileName, setCohortFileName] = useState("");
+  const [cohortPreview, setCohortPreview] = useState<CohortParseResult | null>(null);
+  const [cohortError, setCohortError] = useState("");
+  const [reviseMode, setReviseMode] = useState(false);
+
+  useEffect(() => {
+    if (!reviseId) return;
+    setReviseMode(true);
+    fetch(`/api/opportunity/${reviseId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.search_query) setQuery(data.search_query);
+        if (data.parent_domain) setParentDomain(data.parent_domain);
+        if (data.org_context_id) setOrgContextId(data.org_context_id);
+      })
+      .catch(console.error);
+  }, [reviseId]);
 
   useEffect(() => {
     fetch("/api/discover")
@@ -55,38 +107,74 @@ export default function DiscoverPage() {
   }, []);
 
   useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed.length < 4) {
-      setClassification(null);
-      setClassifying(false);
+    if (!cohortCsv.trim()) {
+      setCohortPreview(null);
+      setCohortError("");
       return;
     }
+    try {
+      const preview = parseCohortCsv(cohortCsv, {
+        fileName: cohortFileName || "cohort.csv",
+        parentDomain,
+      });
+      setCohortPreview(preview);
+      setCohortError("");
+    } catch (err) {
+      setCohortPreview(null);
+      setCohortError(err instanceof Error ? err.message : "Invalid CSV");
+    }
+  }, [cohortCsv, cohortFileName, parentDomain]);
 
-    setClassifying(true);
-    const timer = window.setTimeout(() => {
-      fetch("/api/discover/classify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
-      })
-        .then((r) => r.json())
-        .then((data: ClassificationPreview & { error?: string }) => {
-          if (data.error || !data.tier) {
-            setClassification(null);
-            return;
-          }
-          setClassification(data);
-        })
-        .catch(() => setClassification(null))
-        .finally(() => setClassifying(false));
-    }, 800);
+  const handleFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      setCohortCsv(text);
+      setCohortFileName(file.name);
+    };
+    reader.readAsText(file);
+  };
 
-    return () => window.clearTimeout(timer);
-  }, [query]);
+  const clearCohort = () => {
+    setCohortCsv("");
+    setCohortFileName("");
+    setCohortPreview(null);
+    setCohortError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+
+    if (reviseMode && reviseId) {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/opportunity/${reviseId}/revise`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, parentDomain }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Revise failed");
+        router.push(`/opportunity/${reviseId}`);
+        return;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Revise failed");
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!cohortCsv.trim()) {
+      setError("Patient cohort CSV is required for V3 discovery");
+      return;
+    }
+    if (cohortError || !cohortPreview) {
+      setError(cohortError || "Fix CSV errors before submitting");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -95,7 +183,13 @@ export default function DiscoverPage() {
       const res = await fetch("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, orgContextId, mode, domainContext }),
+        body: JSON.stringify({
+          query,
+          parentDomain,
+          orgContextId,
+          cohortCsv,
+          innovationLevel,
+        }),
       });
 
       const data = await res.json();
@@ -114,6 +208,8 @@ export default function DiscoverPage() {
           evidence_card_count: 0,
           challenge_count: 0,
           last_updated: new Date().toISOString(),
+          schema_version: 3,
+          innovation_level: innovationLevel,
         })
       );
 
@@ -124,133 +220,251 @@ export default function DiscoverPage() {
     }
   };
 
+  const domainEntries = cohortPreview
+    ? Object.entries({
+        ...cohortPreview.cohort.domain_summary.primary_diagnosis_counts,
+      }).sort((a, b) => b[1] - a[1])
+    : [];
+
   return (
     <>
       <TopBar
-        title="New discovery"
-        subtitle="Search any drug, target, or indication — all data is live"
+        narrow
+        title={reviseMode ? "Revise discovery query" : "New discovery"}
+        subtitle={
+          reviseMode
+            ? "Update clinical question or parent domain; cohort is retained on the existing session"
+            : "Define parent domain, upload patient cohort, and seed the V3 hypothesis funnel"
+        }
       />
 
-      <PageContent narrow className="space-y-6">
-        <section>
-          <SectionLabel>Discovery mode</SectionLabel>
-          <div className="grid grid-cols-2 gap-3">
-            {(
-              [
-                {
-                  id: "speed" as const,
-                  label: "Speed",
-                  time: "2–5 min",
-                  detail: "Top PubMed results · preliminary audit",
-                  icon: Zap,
-                },
-                {
-                  id: "depth" as const,
-                  label: "Depth",
-                  time: "15–30 min",
-                  detail: "Semantic Scholar · full regulatory audit",
-                  icon: Microscope,
-                },
-              ] as const
-            ).map(({ id, label, time, detail, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                className={cn(
-                  "flex flex-col rounded-xl border p-4 text-left transition-all",
-                  mode === id
-                    ? "border-brand-purple bg-white shadow-sm ring-2 ring-brand-purple/20"
-                    : "border-gray-200/80 bg-white hover:border-gray-300"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon
+      <PageContent narrow flush className="space-y-6">
+        <Panel
+          title="Configure V3 session"
+          bodyClassName="space-y-6"
+        >
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {contexts.length > 0 && (
+              <OrgContextSelector
+                contexts={contexts}
+                value={orgContextId}
+                onChange={setOrgContextId}
+              />
+            )}
+
+            <div className="space-y-3">
+              <SectionLabel>Parent domain</SectionLabel>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {PARENT_DOMAIN_OPTIONS.map((domain) => (
+                  <button
+                    key={domain.value}
+                    type="button"
+                    onClick={() => setParentDomain(domain.value)}
                     className={cn(
-                      "h-4 w-4",
-                      mode === id ? "text-brand-purple" : "text-gray-400"
+                      "rounded-lg border px-3 py-3 text-left text-sm transition-all",
+                      parentDomain === domain.value
+                        ? "border-[var(--v3-teal)] bg-[rgba(26,107,99,0.06)] ring-1 ring-[var(--v3-teal)]/20"
+                        : "border-[var(--color-border-tertiary)] bg-white hover:border-[var(--v3-teal)]/30"
                     )}
-                  />
-                  <span className="text-sm font-semibold text-gray-900">{label}</span>
-                  <span className="ml-auto text-[11px] text-gray-400">{time}</span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-gray-500">{detail}</p>
-              </button>
-            ))}
-          </div>
-        </section>
+                  >
+                    <span
+                      className="font-medium"
+                      style={{
+                        color:
+                          parentDomain === domain.value
+                            ? "var(--v3-teal)"
+                            : "var(--color-text-primary)",
+                      }}
+                    >
+                      {domain.label}
+                    </span>
+                    <p
+                      className="mt-1 text-xs leading-relaxed"
+                      style={{ color: "var(--color-text-tertiary)" }}
+                    >
+                      {domain.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <Panel title="Configure session">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <OrgContextSelector
-              contexts={contexts}
-              value={orgContextId}
-              onChange={setOrgContextId}
-            />
+            <div className="space-y-3">
+              <SectionLabel>Innovation appetite</SectionLabel>
+              <div className="grid gap-2">
+                {INNOVATION_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setInnovationLevel(option.value)}
+                    className={cn(
+                      "rounded-lg border px-3 py-3 text-left text-sm transition-all",
+                      innovationLevel === option.value
+                        ? "border-[var(--v3-amber)] bg-[rgba(196,132,45,0.08)] ring-1 ring-[var(--v3-amber)]/25"
+                        : "border-[var(--color-border-tertiary)] bg-white hover:border-[var(--v3-amber)]/30"
+                    )}
+                  >
+                    <span
+                      className="font-medium"
+                      style={{
+                        color:
+                          innovationLevel === option.value
+                            ? "var(--v3-amber)"
+                            : "var(--color-text-primary)",
+                      }}
+                    >
+                      {innovationLevelLabel(option.value)}
+                    </span>
+                    <p
+                      className="mt-1 text-xs leading-relaxed"
+                      style={{ color: "var(--color-text-tertiary)" }}
+                    >
+                      {option.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700">
+            <div className="space-y-2">
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-primary)" }}
+              >
                 Discovery query
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search
+                  className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                  style={{ color: "var(--color-text-tertiary)" }}
+                />
                 <Input
-                  className="h-11 border-gray-200 bg-gray-50/50 pl-9"
-                  placeholder="e.g. TTR amyloidosis cardiac"
+                  className="h-12 border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/40 pl-10 text-base"
+                  placeholder="e.g. resistance mechanism in anti-PD1 non-responders with elevated TGF-β"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   disabled={loading}
                 />
               </div>
-              <p className="text-xs text-gray-400">
-                PubMed · ClinicalTrials.gov · Open Targets · OpenFDA
+              <p className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+                Seeds your discovery thesis — not keyword search alone
               </p>
-              {(classifying || classification) && (
-                <p className="text-xs text-gray-600">
-                  {classifying ? (
-                    "Analysing field maturity…"
-                  ) : classification ? (
-                    <>
-                      Field maturity:{" "}
-                      <span className="font-medium text-gray-800">
-                        {tierDisplayLabel(classification.tier)}
-                      </span>
-                      {" · "}
-                      Starting confidence prior:{" "}
-                      <span className="font-medium text-gray-800">
-                        {Math.round(classification.prior_score * 100)}%
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-              )}
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">
-                Domain context
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {DOMAIN_CONTEXTS.map((ctx) => (
-                  <button
-                    key={ctx.value}
-                    type="button"
-                    onClick={() => setDomainContext(ctx.value)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-left text-xs transition-all",
-                      domainContext === ctx.value
-                        ? "border-brand-purple bg-brand-purple/10 text-brand-purple ring-1 ring-brand-purple/30"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                    )}
-                    title={ctx.description}
-                  >
-                    {ctx.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-400">
-                {DOMAIN_CONTEXTS.find((d) => d.value === domainContext)?.description}
-              </p>
+            <div className="space-y-3">
+              <SectionLabel>Patient cohort CSV</SectionLabel>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                }}
+              />
+              {!cohortCsv ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 transition-colors",
+                    "border-[rgba(15,26,46,0.15)] bg-[var(--v3-paper)] hover:border-[var(--v3-teal)]/40"
+                  )}
+                >
+                  <Upload className="h-8 w-8" style={{ color: "var(--v3-teal)" }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--v3-navy)" }}>
+                    Upload cohort CSV
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+                    Required columns: patient_id, primary_diagnosis, comorbidities, biomarkers,
+                    resistance_status, notes
+                  </span>
+                </button>
+              ) : (
+                <div
+                  className="rounded-xl border px-4 py-4"
+                  style={{
+                    borderColor: cohortError
+                      ? "rgba(216, 90, 48, 0.3)"
+                      : "rgba(26, 107, 99, 0.25)",
+                    background: "var(--v3-paper)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-5 w-5" style={{ color: "var(--v3-teal)" }} />
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: "var(--v3-navy)" }}>
+                          {cohortFileName || "cohort.csv"}
+                        </p>
+                        {cohortPreview && (
+                          <p className="text-xs" style={{ color: "var(--v3-amber)" }}>
+                            {cohortPreview.cohort.row_count} patients parsed
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearCohort}
+                      className="rounded-md p-1 hover:bg-black/5"
+                      aria-label="Remove CSV"
+                    >
+                      <X className="h-4 w-4" style={{ color: "var(--color-text-tertiary)" }} />
+                    </button>
+                  </div>
+
+                  {cohortError && (
+                    <p className="mt-3 text-sm text-brand-coral">{cohortError}</p>
+                  )}
+
+                  {cohortPreview && !cohortError && (
+                    <div className="mt-4 space-y-3">
+                      <p
+                        className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em]"
+                        style={{ color: "var(--v3-teal)" }}
+                      >
+                        Domain distribution
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {domainEntries.slice(0, 6).map(([domain, count]) => (
+                          <div
+                            key={domain}
+                            className="flex items-center justify-between rounded-md border border-[rgba(15,26,46,0.08)] bg-white/70 px-3 py-2 text-xs"
+                          >
+                            <span
+                              className="truncate capitalize"
+                              style={{ color: "var(--color-text-secondary)" }}
+                            >
+                              {domain}
+                            </span>
+                            <span className="ml-2 font-mono tabular-nums" style={{ color: "var(--v3-amber)" }}>
+                              {count}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {cohortPreview.cohort.domain_summary.non_parent_domain_patterns.length > 0 && (
+                        <p className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+                          {cohortPreview.cohort.domain_summary.non_parent_domain_patterns.length}{" "}
+                          cross-domain pattern
+                          {cohortPreview.cohort.domain_summary.non_parent_domain_patterns.length === 1
+                            ? ""
+                            : "s"}{" "}
+                          detected outside parent domain
+                        </p>
+                      )}
+                      {cohortPreview.warnings.length > 0 && (
+                        <p className="text-xs text-amber-700">
+                          {cohortPreview.warnings.length} row warning
+                          {cohortPreview.warnings.length === 1 ? "" : "s"} — review before launch
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {error && (
@@ -261,16 +475,24 @@ export default function DiscoverPage() {
 
             <Button
               type="submit"
-              className="h-11 w-full bg-brand-purple hover:bg-brand-purple/90"
-              disabled={loading || !query.trim() || !orgContextId}
+              className="h-12 w-full text-base text-white hover:opacity-90"
+              style={{ background: "var(--v3-navy)" }}
+              disabled={
+                loading ||
+                !query.trim() ||
+                !orgContextId ||
+                (!reviseMode && (!cohortCsv.trim() || !!cohortError))
+              }
             >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Initialising…
+                  {reviseMode ? "Revising…" : "Initialising V3 pipeline…"}
                 </>
+              ) : reviseMode ? (
+                "Revise & resume"
               ) : (
-                `Launch ${mode === "depth" ? "depth" : "speed"} session`
+                "Launch discovery"
               )}
             </Button>
           </form>

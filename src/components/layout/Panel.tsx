@@ -37,7 +37,7 @@ export function Panel({
           <div className="min-w-0">
             {title && (
               <h2
-                className="text-sm font-semibold tracking-tight"
+                className="font-display text-base font-semibold tracking-tight"
                 style={{ color: "var(--color-text-primary)" }}
               >
                 {title}
@@ -63,7 +63,7 @@ export function Panel({
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p
-      className="mb-3 text-[11px] font-semibold uppercase tracking-widest"
+      className="mb-3 text-xs font-semibold uppercase tracking-widest"
       style={{ color: "var(--color-text-tertiary)" }}
     >
       {children}

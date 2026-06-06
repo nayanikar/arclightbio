@@ -1,6 +1,8 @@
 "use client";
 
 import type { ActionabilityZone } from "@/types/OpportunityObject";
+import type { ScoreDecomposition } from "@/lib/scoreDecomposition";
+import { ScoreDecompositionTooltip } from "@/components/opportunity/ScoreDecompositionTooltip";
 import { cn } from "@/lib/utils";
 
 const ZONE_CONFIG: Record<
@@ -15,30 +17,62 @@ const ZONE_CONFIG: Record<
 interface ScoreStripProps {
   confidenceScore: number;
   actionabilityZone: ActionabilityZone;
+  scoreDecomposition?: ScoreDecomposition | null;
 }
 
-export function ScoreStrip({ confidenceScore, actionabilityZone }: ScoreStripProps) {
+export function ScoreStrip({
+  confidenceScore,
+  actionabilityZone,
+  scoreDecomposition,
+}: ScoreStripProps) {
   const zone = ZONE_CONFIG[actionabilityZone];
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-[#EDE8E0] bg-white px-4 py-3">
-      <div className="flex items-baseline gap-2">
-        <span className="text-xs font-medium text-gray-500">Confidence</span>
-        <span className="text-lg font-semibold tabular-nums text-gray-900">
-          {confidenceScore.toFixed(2)}
-        </span>
-      </div>
-      <span className="text-gray-300">|</span>
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-gray-500">Actionability</span>
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-0.5 text-xs font-semibold",
-            zone.pillClass
-          )}
+    <div
+      className="space-y-4 rounded-xl border bg-white p-4"
+      style={{ borderColor: "var(--color-border-tertiary)" }}
+    >
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className="text-xs font-medium uppercase tracking-wide"
+            style={{ color: "var(--color-text-tertiary)" }}
+          >
+            Confidence
+          </span>
+          <ScoreDecompositionTooltip
+            decomposition={scoreDecomposition}
+            confidenceScore={confidenceScore}
+          />
+        </div>
+        <p
+          className="text-2xl font-semibold tabular-nums tracking-tight"
+          style={{ color: "var(--color-text-primary)" }}
         >
-          {zone.label}
+          {confidenceScore.toFixed(2)}
+        </p>
+      </div>
+
+      <div
+        className="border-t pt-3"
+        style={{ borderColor: "var(--color-border-tertiary)" }}
+      >
+        <span
+          className="text-xs font-medium uppercase tracking-wide"
+          style={{ color: "var(--color-text-tertiary)" }}
+        >
+          Actionability
         </span>
+        <div className="mt-2">
+          <span
+            className={cn(
+              "inline-flex w-full items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold",
+              zone.pillClass
+            )}
+          >
+            {zone.label}
+          </span>
+        </div>
       </div>
     </div>
   );

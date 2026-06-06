@@ -4,7 +4,6 @@ import { callAgentJson } from "@/api/anthropic";
 import { getTargetDiseaseAssociations } from "@/api/openTargets";
 import { insertEvidenceCard } from "@/lib/db";
 import { computeCompositeQuality } from "@/lib/scoring";
-import { extractKeywords } from "@/lib/hypothesis";
 import { ApiError } from "@/lib/http";
 import {
   computeDruggabilityComposite,
@@ -13,6 +12,17 @@ import {
 } from "@/lib/targetList";
 import { DOMAIN_CONTEXT_ADJUSTMENTS } from "@/lib/domainContext";
 import { filterFailed, filterOk, type FilterResult } from "@/lib/filterResult";
+import {
+  activeHypothesisContext,
+  resolveAgentKeywords,
+  resolveAgentQuery,
+} from "@/lib/hypothesisContext";
+import { inferEvidenceClass } from "@/lib/evidenceClass";
+import {
+  evaluateTargetAlignment,
+  filterAlignedTargets,
+} from "@/lib/hypothesisTargetAlign";
+import { OT_MIN_SCORE } from "@/lib/scoreDecomposition";
 
 const MECHANISM_FILTER_SYSTEM = `You are the Mechanism Agent for Opportunity Space, built by Arclight Bio.
 Review Open Targets target–disease associations for mechanistic relevance to a biomedical hypothesis.
@@ -119,6 +129,7 @@ async function scoreDruggability(
 ): Promise<RankedTarget[]> {
   const domainContext = obj.domain_context ?? "general";
   const adjustments = DOMAIN_CONTEXT_ADJUSTMENTS[domainContext];
+  const modalityCtx = activeHypothesisContext.getStore()?.declaredModality;
   const targetsJson = JSON.stringify(
     relevant.map((a) => ({
       target_name: a.target,
@@ -137,6 +148,7 @@ async function scoreDruggability(
 
 Targets: ${targetsJson}
 Indication context: ${obj.hypothesis.patient_population}
+Declared modality (v2): ${modalityCtx ?? "not specified"}
 Domain context: ${domainContext}
 ${adjustments?.target_filter ? `Target filter: ${adjustments.target_filter}` : ""}
 
@@ -174,11 +186,25 @@ Return ranked list, highest druggability_composite first:
 }
 
 export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
-  const { targets, conditions } = extractKeywords(
-    obj.search_query ?? "",
-    obj.hypothesis
-  );
-  const targetQuery = targets[0] ?? conditions[0] ?? obj.search_query ?? "TTR";
+  const { targets, conditions } = resolveAgentKeywords(obj);
+  const targetQuery =
+    targets[0] ??
+    (conditions.slice(0, 2).join(" ") ||
+      resolveAgentQuery(obj).split(/\s+/).slice(0, 3).join(" "));
+
+  if (!targetQuery.trim()) {
+    await insertEvidenceCard(obj.id, {
+      content:
+        "Mechanism search skipped — could not derive a target or condition term from the hypothesis.",
+      source_url: "https://platform.opentargets.org/",
+      source_type: "opentargets",
+      contributing_agent: "mechanism",
+      quality_scores: { ...LOW_RELEVANCE_QUALITY, composite: 0.3 },
+      regulatory_weight: 0.3,
+      raw_source_metadata: { partial: true, targetQuery: "" },
+    });
+    return;
+  }
 
   let associations: Awaited<ReturnType<typeof getTargetDiseaseAssociations>> = [];
   let partial = false;
@@ -237,7 +263,37 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
     return;
   }
 
-  const relevant = filterResult.items;
+  const relevant = filterResult.items.filter((a) => a.score >= OT_MIN_SCORE);
+  const weakAssociations = filterResult.items.filter((a) => a.score < OT_MIN_SCORE);
+
+  for (const assoc of weakAssociations.slice(0, 2)) {
+    const original = findAssociation(associations, assoc);
+    await insertEvidenceCard(obj.id, {
+      content: `Weak association (OT score ${assoc.score.toFixed(2)} — below evidence threshold): ${assoc.target}–${assoc.disease}. ${assoc.relevance_reason}`,
+      source_url: original
+        ? `https://platform.opentargets.org/target/${original.targetId}`
+        : "https://platform.opentargets.org/",
+      source_type: "opentargets",
+      contributing_agent: "mechanism",
+      quality_scores: {
+        sample_size: 0.2,
+        study_design: 0.3,
+        source_credibility: 0.25,
+        replication: 0.2,
+        recency: 0.5,
+        composite: 0.25,
+      },
+      regulatory_weight: 0.25,
+      raw_source_metadata: {
+        targetQuery,
+        association: assoc,
+        originalAssociation: original,
+        partial,
+        weak_association: true,
+        evidence_class: "association",
+      },
+    });
+  }
 
   if (relevant.length === 0) {
     await insertEvidenceCard(obj.id, {
@@ -257,15 +313,19 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
     return;
   }
 
-  for (const assoc of relevant.slice(0, 3)) {
+  for (const assoc of relevant.slice(0, obj.hypothesis.source === "outgroup" ? 1 : 3)) {
     const original = findAssociation(associations, assoc);
-    const content = `${assoc.target}–${assoc.disease} association (Open Targets score: ${assoc.score.toFixed(2)}): ${assoc.relevance_reason}`;
+    const geneticsScore = original?.geneticsScore;
+    const weak = assoc.score < OT_MIN_SCORE;
+    const content = weak
+      ? `Weak association (OT score ${assoc.score.toFixed(2)} — below evidence threshold): ${assoc.target}–${assoc.disease}: ${assoc.relevance_reason}`
+      : `${assoc.target}–${assoc.disease} association (Open Targets score: ${assoc.score.toFixed(2)}${geneticsScore != null ? `, genetics: ${geneticsScore.toFixed(2)}` : ""}): ${assoc.relevance_reason}`;
 
     const quality = {
       sample_size: Math.min(1, relevant.length / 5),
       study_design: 0.8,
-      source_credibility: 0.85,
-      replication: assoc.score > 0.3 ? 0.75 : 0.5,
+      source_credibility: weak ? 0.35 : assoc.score > 0.3 ? 0.85 : 0.55,
+      replication: assoc.score > 0.3 ? 0.75 : 0.35,
       recency: 0.85,
     };
 
@@ -283,11 +343,22 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
         association: assoc,
         originalAssociation: original,
         partial,
+        weak_association: weak,
+        genetics_score: geneticsScore,
+        datasource_scores: original?.datasourceScores,
+        evidence_class: "association",
       },
     });
   }
 
-  const rankedTargets = await scoreDruggability(obj, relevant);
+  const druggabilityInput = relevant.filter((a) => a.score >= OT_MIN_SCORE);
+  let rankedTargets = await scoreDruggability(obj, druggabilityInput);
+  rankedTargets = filterAlignedTargets(obj.hypothesis.statement, rankedTargets);
+  const alignment = evaluateTargetAlignment(
+    obj.hypothesis.statement,
+    rankedTargets
+  );
+
   if (rankedTargets.length > 0) {
     const topTarget = rankedTargets[0];
     const composite = topTarget.druggability_composite;
@@ -312,7 +383,41 @@ export async function mechanismAgent(obj: OpportunityObject): Promise<void> {
         targetQuery,
         partial,
         domain_context: obj.domain_context,
+        target_alignment: alignment,
+        evidence_class: inferEvidenceClass({
+          content: formatTargetList(rankedTargets),
+          contributing_agent: "mechanism",
+          source_type: "opentargets",
+        }),
       },
     });
+
+    if (alignment.status === "mismatch") {
+      await insertEvidenceCard(obj.id, {
+        content: `REGULATORY CHALLENGE — Target-hypothesis mismatch: ${alignment.message}`,
+        source_url: "",
+        source_type: "fda",
+        contributing_agent: "regulatory",
+        is_challenge: true,
+        quality_scores: {
+          sample_size: 0.5,
+          study_design: 0.5,
+          source_credibility: 0.9,
+          replication: 0.5,
+          recency: 0.9,
+          composite: 0.6,
+        },
+        regulatory_weight: 0.6,
+        challenge_metadata: {
+          evidence_card_ref: "",
+          score_impact: 0.15,
+          dimension: "composite",
+        },
+        raw_source_metadata: {
+          target_alignment: alignment,
+          wave5: "target_mismatch",
+        },
+      });
+    }
   }
 }

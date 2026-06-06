@@ -1,3 +1,16 @@
+import type { DecisionBrief } from "@/types/DecisionBrief";
+import type {
+  EvidenceSummary,
+  TargetAlignment,
+} from "@/types/MechanisticChain";
+import type { ScoreDecomposition } from "@/lib/scoreDecomposition";
+import type {
+  DrugDiscoveryAssessmentRecord,
+  IndRegulatoryPackageRecord,
+  V3HypothesisFields,
+  V3OpportunityFields,
+} from "@/types/V3Pipeline";
+
 export type AnchorType = "auto_generated" | "human_prompted";
 export type ActionabilityZone = "too_early" | "act_now" | "crowded";
 export type SourceType =
@@ -58,6 +71,7 @@ export interface BlackboardState {
   pauseReason?: "user_stopped" | "surveillance";
   lastError?: string;
   lastEvent?: BlackboardAgentEvent;
+  stage3_evaluation_summary?: string;
 }
 
 export type OpportunityStatus =
@@ -68,6 +82,22 @@ export type OpportunityStatus =
   | "surveillance"
   | "paused"
   | "archived";
+
+/** Lightweight snapshot for status polling — no full evidence payloads. */
+export interface OpportunityStatusSnapshot {
+  id: string;
+  status: OpportunityStatus;
+  schema_version: 1 | 2 | 3;
+  search_query?: string;
+  confidence_score: number;
+  actionability_zone: ActionabilityZone;
+  last_updated: string;
+  top_hypothesis_id: string | null;
+  blackboard_state?: BlackboardState;
+  hypothesis_count: number;
+  evidence_card_count: number;
+  pipeline_complete: boolean;
+}
 
 export type EvidenceTier = "preclinical" | "clinical" | "established";
 
@@ -97,6 +127,7 @@ export interface EvidenceCard {
   is_modality_card?: boolean;
   is_novelty_check?: boolean;
   derisk_recommendation?: DeriskRecommendation;
+  hypothesis_id?: string;
 }
 
 export interface ChallengeMetadata {
@@ -142,10 +173,55 @@ export interface Hypothesis {
   patient_population: string;
   unmet_need: string;
   org_positioning: string;
-  source?: "llm" | "fallback";
+  source?: "llm" | "fallback" | "outgroup";
 }
 
-export interface OpportunityObject {
+export type DeclaredModality =
+  | "small_molecule"
+  | "mab"
+  | "adc"
+  | "rna"
+  | "cell"
+  | "gene";
+
+export type RegulatoryPathway = "NDA" | "BLA";
+
+export type OutgroupValidationStatus = "calibrated" | "scale_unreliable";
+
+export interface OutgroupValidation {
+  status: OutgroupValidationStatus;
+  message: string;
+  outgroup_confidence?: number;
+  novel_median_confidence?: number;
+  outgroup_challenge_count?: number;
+  novel_median_challenges?: number;
+}
+
+export interface HypothesisRecord extends V3HypothesisFields {
+  id: string;
+  opportunity_object_id: string;
+  rank: number | null;
+  is_outgroup: boolean;
+  statement: string;
+  patient_population: string;
+  unmet_need: string;
+  org_positioning: string;
+  source?: "llm" | "fallback" | "outgroup";
+  cross_domain_score?: number | null;
+  declared_modality?: DeclaredModality | null;
+  regulatory_pathway?: RegulatoryPathway | null;
+  confidence_score?: number | null;
+  actionability_score?: number | null;
+  actionability_zone?: ActionabilityZone | null;
+  created_at?: string;
+  evidence_cards?: EvidenceCard[];
+  challenges?: Challenge[];
+  target_alignment?: TargetAlignment | null;
+  evidence_summary?: EvidenceSummary | null;
+  score_decomposition?: ScoreDecomposition | null;
+}
+
+export interface OpportunityObject extends V3OpportunityFields {
   id: string;
   version: number;
   created_at: string;
@@ -174,4 +250,15 @@ export interface OpportunityObject {
   domain_context?: DomainContext;
   indication_type?: IndicationType;
   blackboard_state?: BlackboardState;
+  schema_version?: 1 | 2 | 3;
+  top_hypothesis_id?: string | null;
+  outgroup_validation?: OutgroupValidation | null;
+  hypotheses?: HypothesisRecord[];
+  selected_hypothesis_id?: string;
+  decision_brief?: DecisionBrief | null;
+  drug_discovery_assessment?: DrugDiscoveryAssessmentRecord | null;
+  ind_package_v3?: IndRegulatoryPackageRecord | null;
+  undruggable_targets?: Array<{ target_name: string; reasoning: string }> | null;
+  /** Client cache field — precomputed discovery thesis for dashboard rehydration */
+  discovery_thesis_title?: string | null;
 }

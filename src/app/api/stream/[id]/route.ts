@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getOpportunityObject, getEvidenceCardsSince } from "@/lib/db";
 import { isBlackboardPausedMidRun } from "@/lib/blackboardRun";
+import { listTrailEntriesSince } from "@/lib/agentTrail";
+import { isBlackboardV3Complete } from "@/lib/blackboardRunV3";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,7 @@ export async function GET(
 ) {
   const encoder = new TextEncoder();
   let lastTimestamp = new Date(0).toISOString();
+  let lastTrailTimestamp = new Date(0).toISOString();
   let lastAgentEventAt: string | null = null;
   let closed = false;
 
@@ -45,12 +48,43 @@ export async function GET(
               send("agent_status", lastEvent);
             }
 
+            if (obj.schema_version === 3) {
+              const trailEntries = await listTrailEntriesSince(
+                params.id,
+                lastTrailTimestamp
+              );
+              for (const entry of trailEntries) {
+                lastTrailTimestamp = entry.timestamp;
+                send("trail", entry);
+              }
+            }
+
             send("score", {
               confidence_score: obj.confidence_score,
               actionability_score: obj.actionability_score,
               actionability_zone: obj.actionability_zone,
               status: obj.status,
               blackboard_error: obj.blackboard_state?.lastError,
+              ...(obj.schema_version === 3
+                ? {
+                    schema_version: 3 as const,
+                    v3_phase: obj.v3_phase ?? null,
+                  }
+                : {}),
+              ...(obj.schema_version === 2 && obj.hypotheses?.length
+                ? {
+                    schema_version: 2 as const,
+                    top_hypothesis_id: obj.top_hypothesis_id,
+                    hypotheses: obj.hypotheses.map((h) => ({
+                      id: h.id,
+                      rank: h.rank,
+                      confidence_score: h.confidence_score,
+                      actionability_score: h.actionability_score,
+                      actionability_zone: h.actionability_zone,
+                    })),
+                    outgroup_validation: obj.outgroup_validation,
+                  }
+                : {}),
             });
 
             if (obj.status === "agents_failed") {
@@ -63,7 +97,14 @@ export async function GET(
               break;
             }
 
-            if (obj.status === "complete" || obj.status === "surveillance") {
+            const v3Incomplete =
+              obj.schema_version === 3 &&
+              !isBlackboardV3Complete(obj.blackboard_state);
+
+            if (
+              (obj.status === "complete" || obj.status === "surveillance") &&
+              !v3Incomplete
+            ) {
               send("complete", {
                 status: obj.status,
                 surveillance_tags: obj.surveillance_tags,

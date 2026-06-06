@@ -27,6 +27,10 @@ const ASSOCIATIONS_QUERY = `
             name
           }
           score
+          datasourceScores {
+            id
+            score
+          }
         }
       }
     }
@@ -54,6 +58,35 @@ async function graphql<T>(
   return json.data as T;
 }
 
+/** Pick the search hit whose name best matches query tokens (avoids blind hits[0]). */
+export function pickBestTargetHit(
+  hits: Array<{ id: string; name: string }>,
+  query: string
+): string | null {
+  if (hits.length === 0) return null;
+  const tokens = query
+    .toLowerCase()
+    .split(/[\s,/+-]+/)
+    .filter((t) => t.length > 2);
+  for (const hit of hits) {
+    const name = hit.name.toLowerCase();
+    if (tokens.some((t) => name.includes(t) || t.includes(name))) {
+      return hit.id;
+    }
+  }
+  return hits[0].id;
+}
+
+function parseDatasourceScores(
+  rows?: Array<{ id: string; score: number }>
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const ds of rows ?? []) {
+    out[ds.id] = ds.score;
+  }
+  return out;
+}
+
 export async function getTargetDiseaseAssociations(
   target: string
 ): Promise<TargetDiseaseAssociation[]> {
@@ -64,7 +97,8 @@ export async function getTargetDiseaseAssociations(
   const hits = searchData.search?.hits ?? [];
   if (hits.length === 0) return [];
 
-  const ensemblId = hits[0].id;
+  const ensemblId = pickBestTargetHit(hits, target);
+  if (!ensemblId) return [];
 
   const assocData = await graphql<{
     target?: {
@@ -74,6 +108,7 @@ export async function getTargetDiseaseAssociations(
         rows?: Array<{
           disease: { id: string; name: string };
           score: number;
+          datasourceScores?: Array<{ id: string; score: number }>;
         }>;
       };
     };
@@ -82,11 +117,23 @@ export async function getTargetDiseaseAssociations(
   const targetInfo = assocData.target;
   if (!targetInfo) return [];
 
-  return (targetInfo.associatedDiseases?.rows ?? []).map((row) => ({
-    targetId: targetInfo.id,
-    targetName: targetInfo.approvedSymbol,
-    diseaseId: row.disease.id,
-    diseaseName: row.disease.name,
-    score: row.score,
-  }));
+  return (targetInfo.associatedDiseases?.rows ?? []).map((row) => {
+    const datasourceScores = parseDatasourceScores(row.datasourceScores);
+    const geneticsScore =
+      datasourceScores["gene_burden"] ??
+      datasourceScores["genetic_association"] ??
+      datasourceScores["genetics"] ??
+      datasourceScores["gwas"] ??
+      undefined;
+
+    return {
+      targetId: targetInfo.id,
+      targetName: targetInfo.approvedSymbol,
+      diseaseId: row.disease.id,
+      diseaseName: row.disease.name,
+      score: row.score,
+      geneticsScore,
+      datasourceScores,
+    };
+  });
 }

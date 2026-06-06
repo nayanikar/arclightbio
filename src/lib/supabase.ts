@@ -16,7 +16,12 @@ export function getSupabaseAdmin(): SupabaseClient {
     );
   }
 
-  supabaseAdmin = createClient(url, key);
+  supabaseAdmin = createClient(url, key, {
+    global: {
+      fetch: (input, init) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
   return supabaseAdmin;
 }
 
@@ -28,7 +33,12 @@ export function getSupabaseClient(): SupabaseClient {
     throw new Error("Supabase not configured.");
   }
 
-  return createClient(url, key);
+  return createClient(url, key, {
+    global: {
+      fetch: (input, init) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
 }
 
 const PLACEHOLDER_PATTERNS = [

@@ -1,4 +1,5 @@
 import type { OpportunityObject } from "@/types/OpportunityObject";
+import { buildProgramSummaryDisplay } from "@/lib/programSummary";
 
 export const OPPORTUNITY_IDS_KEY = "arclight_opportunity_ids";
 
@@ -12,6 +13,14 @@ export interface OpportunitySnapshot {
   evidence_card_count: number;
   challenge_count: number;
   last_updated: string;
+  schema_version?: 1 | 2 | 3;
+  innovation_level?: "lowest" | "medium" | "highest";
+  program_trust_score?: number | null;
+  program_hypothesis_sentence?: string | null;
+  v3_phase?: string | null;
+  parent_domain?: OpportunityObject["parent_domain"];
+  discovery_thesis_title?: string | null;
+  program_trust_breakdown?: OpportunityObject["program_trust_breakdown"];
 }
 
 export function opportunitySnapshotKey(id: string): string {
@@ -50,6 +59,14 @@ export function snapshotFromOpportunity(
     evidence_card_count: obj.evidence_cards.length,
     challenge_count: obj.challenges.length,
     last_updated: obj.last_updated,
+    schema_version: obj.schema_version,
+    innovation_level: obj.innovation_level ?? undefined,
+    program_trust_score: obj.program_trust_score ?? null,
+    program_hypothesis_sentence: obj.program_hypothesis_sentence ?? null,
+    v3_phase: obj.v3_phase ?? null,
+    parent_domain: obj.parent_domain,
+    discovery_thesis_title: buildProgramSummaryDisplay(obj),
+    program_trust_breakdown: obj.program_trust_breakdown ?? null,
   };
 }
 
@@ -161,6 +178,14 @@ export function snapshotToOpportunity(
     context_update_proposals: [],
     org_context_id: "",
     search_query: snapshot.query,
+    schema_version: snapshot.schema_version,
+    innovation_level: snapshot.innovation_level,
+    program_trust_score: snapshot.program_trust_score ?? undefined,
+    program_hypothesis_sentence: snapshot.program_hypothesis_sentence ?? undefined,
+    v3_phase: snapshot.v3_phase ?? undefined,
+    parent_domain: snapshot.parent_domain,
+    discovery_thesis_title: snapshot.discovery_thesis_title ?? undefined,
+    program_trust_breakdown: snapshot.program_trust_breakdown ?? undefined,
   };
 }
 

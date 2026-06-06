@@ -7,7 +7,9 @@ import type {
   IndicationType,
 } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
+import { scorableEvidenceCards } from "@/lib/scoringCardFilter";
 import { getIndicationRiskWeights } from "@/lib/indicationRisk";
+import { getCardEvidenceClass, EVIDENCE_CLASS_WEIGHT } from "@/lib/evidenceClass";
 
 const CONFIDENCE_TYPE_WEIGHT: Partial<Record<AgentName, number>> = {
   clinical_trial: 1.5,
@@ -48,11 +50,13 @@ export function computeConfidenceScore(
   const prior =
     TIER_PRIOR[opportunityTier ?? "clinical"] ?? TIER_PRIOR.clinical;
 
-  const evidenceCards = cards.filter(
-    (c) =>
-      !c.is_challenge &&
-      c.contributing_agent !== "commercial" &&
-      c.contributing_agent !== "regulatory"
+  const evidenceCards = scorableEvidenceCards(
+    cards.filter(
+      (c) =>
+        !c.is_challenge &&
+        c.contributing_agent !== "commercial" &&
+        c.contributing_agent !== "regulatory"
+    )
   );
 
   if (evidenceCards.length === 0) {
@@ -86,7 +90,7 @@ export function computeConfidenceScore(
   );
 
   const relevantTrialCount = getRelevantTrialCount(cards);
-  const saturationBonus = relevantTrialCount > 10 ? 0.08 : 0;
+  const saturationBonus = relevantTrialCount > 10 ? -0.05 : 0;
 
   const rawScore = weightedEvidenceScore - challengePenalty + saturationBonus;
 
@@ -100,10 +104,12 @@ export function computeConfidenceScore(
 
 function getCardConfidenceWeight(card: EvidenceCard): number {
   const base = CONFIDENCE_TYPE_WEIGHT[card.contributing_agent] ?? 1.0;
+  const classMultiplier = EVIDENCE_CLASS_WEIGHT[getCardEvidenceClass(card)];
+  let weight = base * classMultiplier;
   if (card.is_cross_domain && card.contributing_agent === "literature") {
-    return base * 1.5;
+    weight *= 1.5;
   }
-  return base;
+  return weight;
 }
 
 export function getActionabilityZoneFromConfidence(
@@ -168,7 +174,7 @@ export function computeActionabilityScore(
   cards: EvidenceCard[],
   context: OrganizationContext
 ): ActionabilityScoreResult {
-  const evidenceCards = cards.filter((c) => !c.is_challenge);
+  const evidenceCards = scorableEvidenceCards(cards.filter((c) => !c.is_challenge));
   if (evidenceCards.length === 0) {
     return {
       score: 0,
@@ -201,19 +207,22 @@ export function computeActionabilityScore(
   );
 
   const saturationModifier = hasCommercialSaturationSignals(evidenceCards)
-    ? 0.25
+    ? -0.15
     : 0;
   const activeTrialCount = getActiveTrialCount(evidenceCards);
-  const trialCountModifier = activeTrialCount > 15 ? 0.1 : 0;
+  const trialCountModifier = activeTrialCount > 15 ? -0.1 : 0;
 
-  const score = Math.min(1, baseScore + saturationModifier + trialCountModifier);
+  const score = Math.max(
+    0,
+    Math.min(1, baseScore + saturationModifier + trialCountModifier)
+  );
 
   const modifierParts: string[] = [];
-  if (saturationModifier > 0) {
-    modifierParts.push("+0.25 commercial saturation");
+  if (saturationModifier < 0) {
+    modifierParts.push("−0.15 commercial saturation (crowded market)");
   }
-  if (trialCountModifier > 0) {
-    modifierParts.push("+0.10 high trial count");
+  if (trialCountModifier < 0) {
+    modifierParts.push("−0.10 high active trial count (competitive)");
   }
 
   const modifierSummary =

@@ -1,0 +1,3 @@
+-- Phase 2 target screen step (runs before drug_check)
+-- No schema change required; v3_phase is free-form text.
+-- DrugDiscoveryAssessment.pipeline_status stored in assessment JSONB.

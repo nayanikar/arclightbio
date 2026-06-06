@@ -30,6 +30,11 @@ export function buildSessionSummaryBullets(input: {
   const targets = parseRankedTargetsFromCard(targetList);
   if (targets.length > 0) {
     const top = targets[0];
+    const targetListCard = findTargetListCard(cards);
+    const alignment = targetListCard?.raw_source_metadata?.target_alignment as
+      | { status?: string; message?: string }
+      | undefined;
+
     const noveltyCard = cards.find((c) => c.is_novelty_check);
     const verdicts = noveltyCard?.raw_source_metadata?.novelty_verdicts as
       | Array<{ target?: string; verdict?: string }>
@@ -37,9 +42,14 @@ export function buildSessionSummaryBullets(input: {
     const novelty = verdicts?.find(
       (v) => v.target?.toUpperCase() === top.gene_symbol.toUpperCase()
     )?.verdict;
-    bullets.push(
-      `Top target: ${top.gene_symbol} (druggability ${top.druggability_composite.toFixed(2)}${novelty ? `, ${novelty.replace(/_/g, " ")}` : ""})`
-    );
+
+    if (alignment?.status === "mismatch") {
+      bullets.push(`Target mismatch: ${alignment.message?.slice(0, 100) ?? "ranked target does not match thesis"}`);
+    } else {
+      bullets.push(
+        `Top target: ${top.gene_symbol} (druggability ${top.druggability_composite.toFixed(2)}${novelty ? `, ${novelty.replace(/_/g, " ")}` : ""}) — aligned`
+      );
+    }
   }
 
   const modalityCard = cards.find((c) => c.is_modality_card);

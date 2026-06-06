@@ -22,7 +22,7 @@ export function ZoneBadge({ zone, className }: ZoneBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.04em]",
+        "inline-flex shrink-0 items-center rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide",
         ZONE_CLASSES[zone],
         className
       )}

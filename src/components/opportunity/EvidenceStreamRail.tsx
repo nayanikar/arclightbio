@@ -9,6 +9,7 @@ import { ChallengeCard } from "./ChallengeCard";
 import { EvidenceCardComponent } from "./EvidenceCard";
 import { Loader2, Radio, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { cardVisibleForHypothesis } from "@/lib/hypothesisCards";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const AGENT_LABELS: Record<AgentName, string> = {
@@ -108,6 +109,33 @@ function CompactEvidenceRow({
                 {isMain ? "Novelty" : ""}
               </span>
             )}
+            {Boolean(card.raw_source_metadata?.reconciliation) && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  isMain
+                    ? "bg-orange-100 text-orange-800"
+                    : "text-[10px] text-orange-400/90"
+                )}
+                title="Literature contradicts ranked thesis"
+              >
+                {isMain ? "Reconciliation" : ""}
+              </span>
+            )}
+            {(Boolean(card.raw_source_metadata?.partial) ||
+              Boolean(card.raw_source_metadata?.lensMissing) ||
+              Boolean(card.raw_source_metadata?.filter_failed)) && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  isMain
+                    ? "bg-amber-100 text-amber-800"
+                    : "text-[10px] text-amber-400/90"
+                )}
+              >
+                Partial
+              </span>
+            )}
             <span className={cn(isMain ? "text-xs text-gray-400" : "text-[10px] text-white/25")}>
               {formatTime(card.timestamp)}
             </span>
@@ -163,10 +191,12 @@ export function EvidenceStreamRail({
   className,
   variant = "sidebar",
   embedded = false,
+  hypothesisIdFilter,
 }: {
   className?: string;
   variant?: TrailVariant;
   embedded?: boolean;
+  hypothesisIdFilter?: string;
 }) {
   const { streamingCards, isStreaming, status, selectedAgent, setSelectedAgent } =
     useOpportunityStore();
@@ -175,6 +205,7 @@ export function EvidenceStreamRail({
 
   const sortedCards = [...streamingCards]
     .filter((c) => !c.is_target_list && !c.is_modality_card)
+    .filter((c) => cardVisibleForHypothesis(c, hypothesisIdFilter))
     .filter((c) => isMain || !selectedAgent || c.contributing_agent === selectedAgent)
     .sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()

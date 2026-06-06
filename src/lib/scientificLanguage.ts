@@ -1,3 +1,6 @@
+import type { InnovationLevel } from "@/types/V3Pipeline";
+import { innovationDiscoveryAddon } from "@/lib/innovationProfile";
+
 /**
  * Central biomedical writing standard for agent-generated text.
  * Applied to all LLM system prompts and evidence card content before storage.
@@ -25,8 +28,23 @@ Examples (bad → good):
 
 const SCIENTIFIC_WRITING_BLOCK = `${SCIENTIFIC_WRITING_RULES}\n\n${SCIENTIFIC_WRITING_EXAMPLES}`;
 
+export const OUTPUT_STRUCTURE_RULES = `
+Output structure rules:
+- Lead with a one-sentence takeaway.
+- Follow with 3-5 bullet points for mechanistic rationale, risks, and precedent.
+- Use short paragraphs (max 2 sentences) for remaining detail.
+- Do not compress meaning; reorganize for scanability.
+`.trim();
+
 export function withScientificWritingRules(systemPrompt: string): string {
-  return `${systemPrompt.trim()}\n\n---\n${SCIENTIFIC_WRITING_BLOCK}`;
+  return `${systemPrompt.trim()}\n\n---\n${SCIENTIFIC_WRITING_BLOCK}\n\n${OUTPUT_STRUCTURE_RULES}`;
+}
+
+export function withDiscoveryMindset(
+  systemPrompt: string,
+  level: InnovationLevel = "highest"
+): string {
+  return `${systemPrompt.trim()}\n\n${innovationDiscoveryAddon(level)}`;
 }
 
 /** Mechanistic phrases where "agonism/antagonism" should not be rewritten. */
@@ -100,7 +118,7 @@ export function sanitizeHypothesisFields(hypothesis: {
   patient_population: string;
   unmet_need: string;
   org_positioning: string;
-  source?: "llm" | "fallback";
+  source?: "llm" | "fallback" | "outgroup";
 }): typeof hypothesis {
   return {
     statement: sanitizeScientificClaim(hypothesis.statement),

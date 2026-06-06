@@ -62,19 +62,77 @@ export function extractKeywords(query: string, hypothesis: OpportunityObject["hy
   interventions: string[];
   targets: string[];
 } {
-  const text = `${query} ${hypothesis.statement} ${hypothesis.patient_population}`;
-  const words = text
-    .split(/[\s,;/]+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 10);
+  const text = `${query} ${hypothesis.statement} ${hypothesis.patient_population} ${hypothesis.unmet_need}`;
+  const stopwords = new Set([
+    "with",
+    "from",
+    "that",
+    "this",
+    "through",
+    "while",
+    "avoiding",
+    "may",
+    "via",
+    "into",
+    "their",
+    "these",
+    "those",
+    "patient",
+    "patients",
+    "disease",
+    "mechanism",
+    "pathway",
+    "receptor",
+    "signaling",
+    "function",
+    "production",
+    "effects",
+    "target",
+    "targets",
+    "therapy",
+    "therapeutic",
+    "treatment",
+    "clinical",
+    "autoimmune",
+  ]);
 
-  const conditions = words.slice(0, 3);
-  const interventions = words.slice(1, 4);
-  const targets = words.filter((w) => /^[A-Z]{2,}/.test(w) || w.includes("-"));
+  const geneSymbols = Array.from(
+    new Set(
+      (text.match(/\b[A-Z][A-Z0-9]{1,9}\b/g) ?? []).filter(
+        (s) => s.length >= 2 && s.length <= 8
+      )
+    )
+  );
+
+  const words = Array.from(
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[\s,;/()-]+/)
+        .map((w) => w.replace(/[^a-z0-9-]/g, ""))
+        .filter((w) => w.length > 3 && !stopwords.has(w))
+    )
+  );
+
+  const queryTerms = query
+    .split(/[\s,;/]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 2);
+
+  const diseaseWords = words
+    .filter((w) => /itis|disease|syndrome|disorder|cancer|flare/.test(w))
+    .slice(0, 3);
+  const conditions = diseaseWords.length ? diseaseWords : words.slice(0, 3);
+  const interventions = geneSymbols.length > 0 ? geneSymbols : words.slice(0, 4);
+  const targets = geneSymbols;
 
   return {
-    conditions: conditions.length ? conditions : [query],
-    interventions: interventions.length ? interventions : [query.split(" ")[0]],
-    targets: targets.length ? targets : [query.split(" ")[0]],
+    conditions: conditions.length ? conditions : queryTerms.slice(0, 3),
+    interventions: interventions.length
+      ? interventions
+      : queryTerms.slice(0, 2).length
+        ? queryTerms.slice(0, 2)
+        : [query.split(" ")[0]],
+    targets,
   };
 }

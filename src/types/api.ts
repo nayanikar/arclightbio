@@ -39,6 +39,8 @@ export interface TargetDiseaseAssociation {
   diseaseId: string;
   diseaseName: string;
   score: number;
+  geneticsScore?: number;
+  datasourceScores?: Record<string, number>;
 }
 
 export interface AdverseEvent {

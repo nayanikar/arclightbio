@@ -5,19 +5,32 @@ import type {
   DomainContext,
   EvidenceCard,
   Hypothesis,
+  HypothesisRecord,
   IndicationType,
   OpportunityObject,
   OpportunityStatus,
+  OpportunityStatusSnapshot,
+  OutgroupValidation,
   QualityScores,
   SurveillanceTags,
   BlackboardState,
+  ActionabilityZone,
+  DeriskRecommendation,
 } from "@/types/OpportunityObject";
 import type { OrganizationContext } from "@/types/OrganizationContext";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
+import { useV3SupabaseDb } from "./v3Storage";
 import * as fileStore from "./fileStore";
+import * as v3FileStore from "./v3FileStore";
 import { domainContextToIndicationType } from "./domainContext";
+import { applyTopHypothesisScores } from "@/lib/hypothesisRanking";
+import {
+  getActiveHypothesisId,
+  placeholderHypothesis,
+  applyTopHypothesisListSummary,
+} from "./hypothesisContext";
 import { sanitizeScientificClaim } from "./scientificLanguage";
-import type { DeriskRecommendation } from "@/types/OpportunityObject";
+import type { DecisionBrief } from "@/types/DecisionBrief";
 
 const DEFAULT_ORG_CONTEXTS: OrganizationContext[] = [
   {
@@ -241,8 +254,432 @@ export async function createOpportunityObject(input: {
   return obj;
 }
 
-export async function getOpportunityObject(
+export async function createOpportunityObjectV2(input: {
+  anchor_type: "auto_generated" | "human_prompted";
+  org_context_id: string;
+  search_query: string;
+  mode?: "speed" | "depth";
+  evidence_tier?: OpportunityObject["evidence_tier"];
+  query_tier?: OpportunityObject["query_tier"];
+  prior_score?: number;
+  domain_context?: DomainContext;
+}): Promise<OpportunityObject> {
+  const placeholder = placeholderHypothesis(input.search_query);
+  const obj = await createOpportunityObject({
+    ...input,
+    hypothesis: placeholder,
+  });
+
+  const v2Fields = {
+    schema_version: 2 as const,
+    top_hypothesis_id: null,
+    outgroup_validation: null,
+    hypotheses: [] as HypothesisRecord[],
+  };
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("opportunity_objects")
+      .update({
+        schema_version: 2,
+        top_hypothesis_id: null,
+        outgroup_validation: null,
+      })
+      .eq("id", obj.id);
+    if (error) throw error;
+  } else {
+    await fileStore.fileStoreUpdateOpportunity(obj.id, v2Fields);
+  }
+
+  return { ...obj, ...v2Fields };
+}
+
+export function mapHypothesisRow(row: Record<string, unknown>): HypothesisRecord {
+  return {
+    id: row.id as string,
+    opportunity_object_id: row.opportunity_object_id as string,
+    rank: row.rank as number | null,
+    is_outgroup: Boolean(row.is_outgroup),
+    statement: row.statement as string,
+    patient_population: row.patient_population as string,
+    unmet_need: row.unmet_need as string,
+    org_positioning: row.org_positioning as string,
+    source: row.source as HypothesisRecord["source"],
+    cross_domain_score:
+      typeof row.cross_domain_score === "number"
+        ? (row.cross_domain_score as number)
+        : null,
+    declared_modality: row.declared_modality as HypothesisRecord["declared_modality"],
+    regulatory_pathway: row.regulatory_pathway as HypothesisRecord["regulatory_pathway"],
+    confidence_score:
+      typeof row.confidence_score === "number"
+        ? (row.confidence_score as number)
+        : null,
+    actionability_score:
+      typeof row.actionability_score === "number"
+        ? (row.actionability_score as number)
+        : null,
+    actionability_zone: row.actionability_zone as HypothesisRecord["actionability_zone"],
+    created_at: row.created_at as string | undefined,
+    mechanistic_chain:
+      (row.mechanistic_chain as HypothesisRecord["mechanistic_chain"]) ?? null,
+    target_alignment:
+      (row.target_alignment as HypothesisRecord["target_alignment"]) ?? null,
+    evidence_summary:
+      (row.evidence_summary as HypothesisRecord["evidence_summary"]) ?? null,
+    score_decomposition:
+      (row.score_decomposition as HypothesisRecord["score_decomposition"]) ?? null,
+    hypothesis_stage:
+      (row.hypothesis_stage as HypothesisRecord["hypothesis_stage"]) ?? null,
+    parent_hypothesis_id:
+      (row.parent_hypothesis_id as string | null | undefined) ?? null,
+    falsifiability_statement:
+      (row.falsifiability_statement as string | null | undefined) ?? null,
+    anchor_type: (row.anchor_type as HypothesisRecord["anchor_type"]) ?? null,
+    anchor_linkage: (row.anchor_linkage as string | null | undefined) ?? null,
+    dropped_links:
+      (row.dropped_links as HypothesisRecord["dropped_links"]) ?? [],
+    new_moa_requires_experiment: Boolean(row.new_moa_requires_experiment),
+    intervention_direction_hypothesis:
+      (row.intervention_direction_hypothesis as string | null | undefined) ?? null,
+    direction_status:
+      (row.direction_status as HypothesisRecord["direction_status"]) ?? null,
+    direction_hypotheses:
+      (row.direction_hypotheses as HypothesisRecord["direction_hypotheses"]) ?? [],
+    rank_decomposition:
+      (row.rank_decomposition as HypothesisRecord["rank_decomposition"]) ?? null,
+    ranking_rationale:
+      (row.ranking_rationale as string | null | undefined) ?? null,
+    ranked_targets:
+      (row.ranked_targets as HypothesisRecord["ranked_targets"]) ?? null,
+    falsification_experiment:
+      (row.falsification_experiment as HypothesisRecord["falsification_experiment"]) ??
+      null,
+    target_family_context:
+      (row.target_family_context as HypothesisRecord["target_family_context"]) ??
+      null,
+  };
+}
+
+export async function listHypotheses(
+  opportunityId: string
+): Promise<HypothesisRecord[]> {
+  if (await useV3SupabaseDb()) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("hypotheses")
+      .select("*")
+      .eq("opportunity_object_id", opportunityId)
+      .order("rank", { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    const fromDb = (data ?? []).map(mapHypothesisRow);
+    if (fromDb.length > 0) return fromDb;
+
+    const { syncV3FileOverlayToSupabase, readV3FileOverlayHypotheses } =
+      await import("@/lib/v3Db");
+    await syncV3FileOverlayToSupabase(opportunityId);
+
+    const { data: retry, error: retryErr } = await supabase
+      .from("hypotheses")
+      .select("*")
+      .eq("opportunity_object_id", opportunityId)
+      .order("rank", { ascending: true, nullsFirst: false });
+    if (retryErr) throw retryErr;
+    if ((retry ?? []).length > 0) {
+      return (retry ?? []).map(mapHypothesisRow);
+    }
+
+    return readV3FileOverlayHypotheses(opportunityId);
+  }
+
+  if (isSupabaseConfigured()) {
+    const fileHyps = await fileStore.fileStoreListHypotheses(opportunityId);
+    if (fileHyps.length > 0) return fileHyps;
+    const v3Hyps = await v3FileStore.fileStoreListV3Hypotheses(opportunityId);
+    if (v3Hyps.length > 0) return v3Hyps as HypothesisRecord[];
+  }
+
+  return fileStore.fileStoreListHypotheses(opportunityId);
+}
+
+export async function clearHypothesesForOpportunity(
+  opportunityId: string
+): Promise<void> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("hypotheses")
+      .delete()
+      .eq("opportunity_object_id", opportunityId);
+    if (error) throw error;
+    return;
+  }
+  await fileStore.fileStoreClearHypotheses(opportunityId);
+}
+
+export async function createHypothesis(
+  opportunityId: string,
+  input: Omit<
+    HypothesisRecord,
+    | "id"
+    | "opportunity_object_id"
+    | "declared_modality"
+    | "regulatory_pathway"
+    | "confidence_score"
+    | "actionability_score"
+    | "actionability_zone"
+    | "created_at"
+  > & { id?: string }
+): Promise<HypothesisRecord> {
+  const record: HypothesisRecord = {
+    id: input.id ?? randomUUID(),
+    opportunity_object_id: opportunityId,
+    rank: input.rank ?? null,
+    is_outgroup: input.is_outgroup,
+    statement: input.statement,
+    patient_population: input.patient_population,
+    unmet_need: input.unmet_need,
+    org_positioning: input.org_positioning,
+    source: input.source,
+    cross_domain_score: input.cross_domain_score ?? null,
+    declared_modality: null,
+    regulatory_pathway: null,
+    confidence_score: null,
+    actionability_score: null,
+    actionability_zone: null,
+    created_at: new Date().toISOString(),
+    hypothesis_stage: input.hypothesis_stage ?? null,
+    parent_hypothesis_id: input.parent_hypothesis_id ?? null,
+    falsifiability_statement: input.falsifiability_statement ?? null,
+    anchor_type: input.anchor_type ?? null,
+    anchor_linkage: input.anchor_linkage ?? null,
+    dropped_links: input.dropped_links ?? [],
+    new_moa_requires_experiment: input.new_moa_requires_experiment ?? false,
+    intervention_direction_hypothesis:
+      input.intervention_direction_hypothesis ?? null,
+    direction_status: input.direction_status ?? null,
+    direction_hypotheses: input.direction_hypotheses ?? [],
+    rank_decomposition: input.rank_decomposition ?? null,
+    ranking_rationale: input.ranking_rationale ?? null,
+    ranked_targets: input.ranked_targets ?? null,
+    falsification_experiment: input.falsification_experiment ?? null,
+    target_family_context: input.target_family_context ?? null,
+    mechanistic_chain: input.mechanistic_chain ?? null,
+  };
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("hypotheses").insert({
+      id: record.id,
+      opportunity_object_id: opportunityId,
+      rank: record.rank,
+      is_outgroup: record.is_outgroup,
+      statement: record.statement,
+      patient_population: record.patient_population,
+      unmet_need: record.unmet_need,
+      org_positioning: record.org_positioning,
+      source: record.source ?? null,
+      cross_domain_score: record.cross_domain_score,
+      hypothesis_stage: input.hypothesis_stage ?? null,
+      parent_hypothesis_id: input.parent_hypothesis_id ?? null,
+      falsifiability_statement: input.falsifiability_statement ?? null,
+      anchor_type: input.anchor_type ?? null,
+      anchor_linkage: input.anchor_linkage ?? null,
+      dropped_links: input.dropped_links ?? [],
+      new_moa_requires_experiment: input.new_moa_requires_experiment ?? false,
+      intervention_direction_hypothesis:
+        input.intervention_direction_hypothesis ?? null,
+      direction_status: input.direction_status ?? null,
+      direction_hypotheses: input.direction_hypotheses ?? [],
+      rank_decomposition: input.rank_decomposition ?? null,
+      ranking_rationale: input.ranking_rationale ?? null,
+      ranked_targets: input.ranked_targets ?? null,
+      falsification_experiment: input.falsification_experiment ?? null,
+      target_family_context: input.target_family_context ?? null,
+      mechanistic_chain: input.mechanistic_chain ?? null,
+    });
+    if (error) throw error;
+  } else {
+    await fileStore.fileStoreCreateHypothesis(opportunityId, record);
+  }
+
+  return record;
+}
+
+export async function updateHypothesis(
+  hypothesisId: string,
+  updates: Partial<
+    Pick<
+      HypothesisRecord,
+      | "rank"
+      | "declared_modality"
+      | "regulatory_pathway"
+      | "confidence_score"
+      | "actionability_score"
+      | "actionability_zone"
+      | "cross_domain_score"
+      | "mechanistic_chain"
+      | "target_alignment"
+      | "evidence_summary"
+      | "score_decomposition"
+      | "hypothesis_stage"
+      | "parent_hypothesis_id"
+      | "falsifiability_statement"
+      | "anchor_type"
+      | "anchor_linkage"
+      | "dropped_links"
+      | "new_moa_requires_experiment"
+      | "intervention_direction_hypothesis"
+      | "direction_status"
+      | "direction_hypotheses"
+      | "rank_decomposition"
+      | "ranking_rationale"
+      | "ranked_targets"
+      | "falsification_experiment"
+      | "target_family_context"
+    >
+  >
+): Promise<void> {
+  if (await useV3SupabaseDb()) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("hypotheses")
+      .update(updates)
+      .eq("id", hypothesisId);
+    if (error) throw error;
+    return;
+  }
+
+  await fileStore.fileStoreUpdateHypothesis(hypothesisId, updates);
+  const oppId = await fileStore.fileStoreFindOpportunityIdForHypothesis(hypothesisId);
+  if (oppId) {
+    await v3FileStore.fileStoreUpdateV3Hypothesis(oppId, hypothesisId, updates);
+  }
+}
+
+export async function getEvidenceCardsForHypothesis(
+  hypothesisId: string
+): Promise<EvidenceCard[]> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("evidence_cards")
+      .select("*")
+      .eq("hypothesis_id", hypothesisId)
+      .order("timestamp", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(mapEvidenceCardRow);
+  }
+  return fileStore.fileStoreGetEvidenceCardsForHypothesis(hypothesisId);
+}
+
+export async function getChallengeCountForHypothesis(
+  hypothesisId: string
+): Promise<number> {
+  const cards = await getEvidenceCardsForHypothesis(hypothesisId);
+  return cards.filter((c) => c.is_challenge).length;
+}
+
+function mapStatusSnapshot(
+  row: Record<string, unknown>,
+  hypothesisCount: number,
+  evidenceCardCount: number,
+  pipelineComplete: boolean
+): OpportunityStatusSnapshot {
+  const schemaVersion = ((row.schema_version as number | undefined) ?? 1) as 1 | 2 | 3;
+  return {
+    id: row.id as string,
+    status: row.status as OpportunityStatus,
+    schema_version: schemaVersion,
+    search_query: row.search_query as string | undefined,
+    confidence_score: row.confidence_score as number,
+    actionability_zone: row.actionability_zone as ActionabilityZone,
+    last_updated: row.last_updated as string,
+    top_hypothesis_id: (row.top_hypothesis_id as string | null | undefined) ?? null,
+    blackboard_state: row.blackboard_state as BlackboardState | undefined,
+    hypothesis_count: hypothesisCount,
+    evidence_card_count: evidenceCardCount,
+    pipeline_complete: pipelineComplete,
+  };
+}
+
+export async function getOpportunityStatus(
   id: string
+): Promise<OpportunityStatusSnapshot | null> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data: row, error } = await supabase
+      .from("opportunity_objects")
+      .select(
+        "id, status, schema_version, search_query, confidence_score, actionability_zone, last_updated, top_hypothesis_id, blackboard_state"
+      )
+      .eq("id", id)
+      .single();
+    if (error || !row) return null;
+
+    const schemaVersion = (row.schema_version as number | undefined) ?? 1;
+
+    const { count: cardCount } = await supabase
+      .from("evidence_cards")
+      .select("*", { count: "exact", head: true })
+      .eq("opportunity_object_id", id);
+
+    let hypothesisCount = 0;
+    if (schemaVersion === 2 || schemaVersion === 3) {
+      const { count: hypCount } = await supabase
+        .from("hypotheses")
+        .select("*", { count: "exact", head: true })
+        .eq("opportunity_object_id", id);
+      hypothesisCount = hypCount ?? 0;
+    }
+
+    const { isBlackboardV2Complete } = await import("@/lib/blackboardRunV2");
+    const { isBlackboardComplete } = await import("@/lib/blackboardRun");
+    const { isBlackboardV3Complete } = await import("@/lib/blackboardRunV3");
+    const state = row.blackboard_state as BlackboardState | undefined;
+    const pipelineComplete =
+      schemaVersion === 2
+        ? isBlackboardV2Complete(state)
+        : schemaVersion === 3
+          ? isBlackboardV3Complete(state)
+          : isBlackboardComplete(state);
+
+    let rowForSnapshot: Record<string, unknown> = { ...row };
+    if (schemaVersion === 2 || schemaVersion === 3) {
+      const { data: hypRows } = await supabase
+        .from("hypotheses")
+        .select("id, confidence_score, actionability_zone, is_outgroup, rank")
+        .eq("opportunity_object_id", id)
+        .order("rank", { ascending: true });
+      const top =
+        hypRows?.find((h) => h.id === row.top_hypothesis_id) ??
+        hypRows?.find((h) => h.rank === 1) ??
+        hypRows?.find((h) => !h.is_outgroup) ??
+        hypRows?.[0];
+      if (top) {
+        rowForSnapshot = {
+          ...rowForSnapshot,
+          confidence_score: top.confidence_score,
+          actionability_zone: top.actionability_zone,
+        };
+      }
+    }
+
+    return mapStatusSnapshot(
+      rowForSnapshot,
+      hypothesisCount,
+      cardCount ?? 0,
+      pipelineComplete
+    );
+  }
+
+  return fileStore.fileStoreGetOpportunityStatus(id);
+}
+
+export async function getOpportunityObject(
+  id: string,
+  options?: { skipRepair?: boolean }
 ): Promise<OpportunityObject | null> {
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
@@ -253,13 +690,77 @@ export async function getOpportunityObject(
       .single();
     if (error || !row) return null;
 
+    const schemaVersion = (row.schema_version as number | undefined) ?? 1;
+
     const { data: cards } = await supabase
       .from("evidence_cards")
       .select("*")
       .eq("opportunity_object_id", id)
       .order("timestamp", { ascending: true });
 
-    return mapOpportunityRow(row, cards ?? []);
+    const allCards = cards ?? [];
+    const v1Cards =
+      schemaVersion === 1
+        ? allCards.filter((c) => !c.hypothesis_id)
+        : allCards;
+
+    const obj = mapOpportunityRow(row, v1Cards);
+
+    if (schemaVersion === 2 || schemaVersion === 3) {
+      const hypotheses = await listHypotheses(id);
+      const withCards = await Promise.all(
+        hypotheses.map(async (h) => {
+          const hCards = allCards.filter(
+            (c) => c.hypothesis_id === h.id
+          );
+          const mapped = hCards.map(mapEvidenceCardRow);
+          return {
+            ...h,
+            evidence_cards: mapped.filter((c) => !c.is_challenge),
+            challenges: mapped
+              .filter((c) => c.is_challenge)
+              .map((c) => ({
+                id: c.id,
+                content: c.content,
+                flagged_by: "regulatory" as const,
+                evidence_card_ref: c.challenge_metadata?.evidence_card_ref ?? "",
+                score_impact: c.challenge_metadata?.score_impact ?? 0,
+                dimension: c.challenge_metadata?.dimension ?? ("composite" as const),
+              })),
+          };
+        })
+      );
+      obj.hypotheses = withCards;
+      obj.evidence_cards = allCards.map(mapEvidenceCardRow).filter((c) => !c.is_challenge);
+      obj.challenges = allCards
+        .map(mapEvidenceCardRow)
+        .filter((c) => c.is_challenge)
+        .map((c) => ({
+          id: c.id,
+          content: c.content,
+          flagged_by: "regulatory" as const,
+          evidence_card_ref: c.challenge_metadata?.evidence_card_ref ?? "",
+          score_impact: c.challenge_metadata?.score_impact ?? 0,
+          dimension: c.challenge_metadata?.dimension ?? "composite",
+        }));
+
+      const top = withCards.find((h) => h.id === obj.top_hypothesis_id);
+      if (top?.confidence_score != null) {
+        Object.assign(obj, applyTopHypothesisScores(top));
+      }
+    }
+
+    if (schemaVersion === 3) {
+      const { hydrateV3OpportunityObject, repairV3MisclassifiedFailure } =
+        await import("@/lib/v3Db");
+      if (!options?.skipRepair && obj.status === "agents_failed") {
+        await repairV3MisclassifiedFailure(id);
+        return getOpportunityObject(id, { skipRepair: true });
+      }
+      return hydrateV3OpportunityObject(obj);
+    }
+
+    return obj;
   }
 
   return fileStore.fileStoreGetOpportunity(id);
@@ -274,16 +775,71 @@ export async function listOpportunityObjects(): Promise<OpportunityObject[]> {
       .order("last_updated", { ascending: false });
     if (error) throw error;
 
-    const results: OpportunityObject[] = [];
-    for (const row of data ?? []) {
-      const { data: cards } = await supabase
-        .from("evidence_cards")
+    const rows = data ?? [];
+    if (rows.length === 0) return [];
+
+    const { repairV3MisclassifiedFailure } = await import("@/lib/v3Db");
+    const failedV3Ids = rows
+      .filter(
+        (r) =>
+          r.status === "agents_failed" &&
+          ((r.schema_version as number | undefined) ?? 1) === 3
+      )
+      .map((r) => r.id as string);
+    if (failedV3Ids.length > 0) {
+      await Promise.all(
+        failedV3Ids.map((id) => repairV3MisclassifiedFailure(id))
+      );
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from("opportunity_objects")
         .select("*")
-        .eq("opportunity_object_id", row.id)
-        .order("timestamp", { ascending: true });
-      results.push(mapOpportunityRow(row, cards ?? []));
+        .order("last_updated", { ascending: false });
+      if (refreshErr) throw refreshErr;
+      rows.splice(0, rows.length, ...(refreshed ?? []));
     }
-    return results;
+
+    const ids = rows.map((r) => r.id as string);
+
+    const { data: allCards } = await supabase
+      .from("evidence_cards")
+      .select("*")
+      .in("opportunity_object_id", ids)
+      .order("timestamp", { ascending: true });
+
+    const { data: allHyps } = await supabase
+      .from("hypotheses")
+      .select("*")
+      .in("opportunity_object_id", ids)
+      .order("rank", { ascending: true });
+
+    const cardsByOpp = new Map<string, Record<string, unknown>[]>();
+    for (const card of allCards ?? []) {
+      const oid = card.opportunity_object_id as string;
+      const bucket = cardsByOpp.get(oid);
+      if (bucket) bucket.push(card);
+      else cardsByOpp.set(oid, [card]);
+    }
+
+    const hypsByOpp = new Map<string, HypothesisRecord[]>();
+    for (const row of allHyps ?? []) {
+      const oid = row.opportunity_object_id as string;
+      const mapped = mapHypothesisRow(row);
+      const bucket = hypsByOpp.get(oid);
+      if (bucket) bucket.push(mapped);
+      else hypsByOpp.set(oid, [mapped]);
+    }
+
+    return rows.map((row) => {
+      const id = row.id as string;
+      const schemaVersion = (row.schema_version as number | undefined) ?? 1;
+      const cards = cardsByOpp.get(id) ?? [];
+      let obj = mapOpportunityRow(row, cards);
+      if (schemaVersion === 2 || schemaVersion === 3) {
+        const hypotheses = hypsByOpp.get(id) ?? [];
+        obj = applyTopHypothesisListSummary({ ...obj, hypotheses }, hypotheses);
+      }
+      return obj;
+    });
   }
 
   return fileStore.fileStoreListOpportunities();
@@ -336,10 +892,42 @@ function mapOpportunityRow(
         : undefined,
     domain_context:
       (row.domain_context as DomainContext | undefined) ?? "general",
-    indication_type:
-      (row.indication_type as IndicationType | undefined) ?? "oncology",
+    indication_type: row.indication_type as IndicationType | undefined,
     blackboard_state:
       (row.blackboard_state as BlackboardState | undefined) ?? undefined,
+    schema_version: ((row.schema_version as number | undefined) ?? 1) as 1 | 2 | 3,
+    top_hypothesis_id: (row.top_hypothesis_id as string | null | undefined) ?? null,
+    outgroup_validation:
+      (row.outgroup_validation as OutgroupValidation | null | undefined) ?? null,
+    decision_brief:
+      (row.decision_brief as OpportunityObject["decision_brief"]) ?? null,
+    innovation_level:
+      (row.innovation_level as OpportunityObject["innovation_level"]) ?? "medium",
+    parent_domain:
+      (row.parent_domain as OpportunityObject["parent_domain"]) ?? null,
+    cohort_id: (row.cohort_id as string | null | undefined) ?? null,
+    program_hypothesis_sentence:
+      (row.program_hypothesis_sentence as string | null | undefined) ?? null,
+    anchor_profiles:
+      (row.anchor_profiles as OpportunityObject["anchor_profiles"]) ?? null,
+    expert_domains:
+      (row.expert_domains as OpportunityObject["expert_domains"]) ?? null,
+    selected_phase2_hypothesis_id:
+      (row.selected_phase2_hypothesis_id as string | null | undefined) ?? null,
+    v3_phase: (row.v3_phase as OpportunityObject["v3_phase"]) ?? null,
+    population_definition:
+      (row.population_definition as OpportunityObject["population_definition"]) ?? null,
+    cd1_patterns: (row.cd1_patterns as OpportunityObject["cd1_patterns"]) ?? null,
+    cd2_associations:
+      (row.cd2_associations as OpportunityObject["cd2_associations"]) ?? null,
+    cross_context_seeds:
+      (row.cross_context_seeds as OpportunityObject["cross_context_seeds"]) ?? null,
+    program_trust_score:
+      typeof row.program_trust_score === "number"
+        ? (row.program_trust_score as number)
+        : null,
+    program_trust_breakdown:
+      (row.program_trust_breakdown as OpportunityObject["program_trust_breakdown"]) ?? null,
   };
 }
 
@@ -361,6 +949,7 @@ function mapEvidenceCardRow(row: Record<string, unknown>): EvidenceCard {
     is_modality_card: (row.is_modality_card as boolean | undefined) ?? false,
     is_novelty_check: (row.is_novelty_check as boolean | undefined) ?? false,
     derisk_recommendation: row.derisk_recommendation as EvidenceCard["derisk_recommendation"],
+    hypothesis_id: (row.hypothesis_id as string | undefined) ?? undefined,
   };
 }
 
@@ -378,6 +967,18 @@ export async function updateOpportunityObject(
     query_tier: OpportunityObject["query_tier"];
     prior_score: number;
     blackboard_state: BlackboardState;
+    schema_version: 1 | 2 | 3;
+    top_hypothesis_id: string | null;
+    outgroup_validation: OutgroupValidation | null;
+    decision_brief: DecisionBrief | null;
+    search_query: string;
+    parent_domain: OpportunityObject["parent_domain"];
+    cohort_id: string | null;
+    program_hypothesis_sentence: string | null;
+    anchor_profiles: OpportunityObject["anchor_profiles"];
+    expert_domains: OpportunityObject["expert_domains"];
+    selected_phase2_hypothesis_id: string | null;
+    v3_phase: OpportunityObject["v3_phase"];
   }>
 ): Promise<void> {
   const payload = { ...updates, last_updated: new Date().toISOString() };
@@ -417,7 +1018,8 @@ export async function insertEvidenceCard(
   card: Omit<EvidenceCard, "id" | "timestamp"> & {
     id?: string;
     timestamp?: string;
-  }
+  },
+  options?: { hypothesisId?: string }
 ): Promise<EvidenceCard> {
   const fullCard: EvidenceCard = {
     ...card,
@@ -427,6 +1029,7 @@ export async function insertEvidenceCard(
     timestamp: card.timestamp ?? new Date().toISOString(),
     quality_scores: card.quality_scores ?? defaultQualityScores(),
     regulatory_weight: card.regulatory_weight ?? card.quality_scores?.composite ?? 0.5,
+    hypothesis_id: options?.hypothesisId ?? card.hypothesis_id ?? getActiveHypothesisId(),
   };
 
   if (isSupabaseConfigured()) {
@@ -434,6 +1037,7 @@ export async function insertEvidenceCard(
     const { error } = await supabase.from("evidence_cards").insert({
       id: fullCard.id,
       opportunity_object_id: opportunityId,
+      hypothesis_id: fullCard.hypothesis_id ?? null,
       content: fullCard.content,
       source_url: fullCard.source_url,
       source_type: fullCard.source_type,
@@ -481,6 +1085,7 @@ export async function getEvidenceCardsSince(
 export async function getAllEvidenceCards(
   opportunityId: string
 ): Promise<EvidenceCard[]> {
+  let cards: EvidenceCard[];
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -489,12 +1094,56 @@ export async function getAllEvidenceCards(
       .eq("opportunity_object_id", opportunityId)
       .order("timestamp", { ascending: true });
     if (error) throw error;
-    return (data ?? []).map(mapEvidenceCardRow);
+    cards = (data ?? []).map(mapEvidenceCardRow);
+  } else {
+    cards = await fileStore.fileStoreGetEvidenceCards(opportunityId);
   }
-  return fileStore.fileStoreGetEvidenceCards(opportunityId);
+
+  const hypothesisId = getActiveHypothesisId();
+  if (hypothesisId) {
+    return cards.filter((c) => c.hypothesis_id === hypothesisId);
+  }
+  return cards;
+}
+
+/** Stage-1 PubMed / cross-domain cards scoped to the whole discovery program (no hypothesis_id). */
+export async function getSharedStage1LiteratureCards(
+  opportunityId: string
+): Promise<EvidenceCard[]> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("evidence_cards")
+      .select("*")
+      .eq("opportunity_object_id", opportunityId)
+      .is("hypothesis_id", null)
+      .order("timestamp", { ascending: true });
+    if (error) throw error;
+    return (data ?? [])
+      .map(mapEvidenceCardRow)
+      .filter(
+        (c) =>
+          !c.is_challenge &&
+          (c.contributing_agent === "literature" ||
+            c.raw_source_metadata?.cross_domain === true)
+      );
+  }
+  const cards = await fileStore.fileStoreGetEvidenceCards(opportunityId);
+  return cards.filter(
+    (c) =>
+      !c.hypothesis_id &&
+      !c.is_challenge &&
+      (c.contributing_agent === "literature" ||
+        c.raw_source_metadata?.cross_domain === true)
+  );
 }
 
 export async function getChallengeCount(opportunityId: string): Promise<number> {
+  const hypothesisId = getActiveHypothesisId();
+  if (hypothesisId) {
+    return getChallengeCountForHypothesis(hypothesisId);
+  }
+
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
     const { count, error } = await supabase
@@ -530,7 +1179,10 @@ export async function updateEvidenceCard(
   updates: Partial<
     Pick<
       EvidenceCard,
-      "quality_scores" | "regulatory_weight" | "derisk_recommendation"
+      | "quality_scores"
+      | "regulatory_weight"
+      | "derisk_recommendation"
+      | "raw_source_metadata"
     >
   >
 ): Promise<void> {
@@ -586,3 +1238,4 @@ export async function saveRegulatoryPackage(pkg: Record<string, unknown>): Promi
 }
 
 export { DEFAULT_ORG_CONTEXTS };
+export { createOpportunityObjectV3 } from "./v3Db";

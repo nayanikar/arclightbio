@@ -24,9 +24,11 @@ export function ModalityPanel({ cards }: { cards: EvidenceCard[] }) {
   if (assessments.length === 0) {
     return (
       <Panel title="Modality recommendation">
-        <p className="whitespace-pre-wrap text-xs leading-relaxed text-gray-600">
-          {modalityCard.content}
-        </p>
+        <div className="space-y-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          {modalityCard.content.split(/\n\n+/).map((paragraph, i) => (
+            <p key={i}>{paragraph.trim()}</p>
+          ))}
+        </div>
       </Panel>
     );
   }

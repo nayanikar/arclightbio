@@ -3,15 +3,17 @@ import { getAdverseEvents } from "@/api/openFda";
 import { searchTrials } from "@/api/clinicalTrials";
 import { insertEvidenceCard } from "@/lib/db";
 import { computeCompositeQuality } from "@/lib/scoring";
-import { extractKeywords } from "@/lib/hypothesis";
 import { ApiError } from "@/lib/http";
+import { resolveAgentKeywords, resolveAgentQuery } from "@/lib/hypothesisContext";
 
 export async function rweSignalAgent(obj: OpportunityObject): Promise<void> {
-  const { conditions, interventions } = extractKeywords(
-    obj.search_query ?? "",
-    obj.hypothesis
-  );
-  const drugTerm = interventions[0] ?? conditions[0] ?? obj.search_query?.split(" ")[0] ?? "";
+  const { conditions, interventions } = resolveAgentKeywords(obj);
+  const query = resolveAgentQuery(obj);
+  const drugTerm =
+    interventions[0] ??
+    conditions[0] ??
+    query.split(/\s+/).slice(0, 3).join(" ") ??
+    "";
 
   let events: Awaited<ReturnType<typeof getAdverseEvents>> = [];
   let trials: Awaited<ReturnType<typeof searchTrials>> = [];
@@ -49,7 +51,7 @@ export async function rweSignalAgent(obj: OpportunityObject): Promise<void> {
 
   const totalEnrollment = trials.reduce((sum, t) => sum + t.enrollment, 0);
 
-  const content = `Real-world signal analysis for ${drugTerm}: ${totalReports} FAERS reports across ${events.length} reaction types. ${
+  const content = `Real-world signal analysis for ${drugTerm || query.slice(0, 80)}: ${totalReports} FAERS reports across ${events.length} reaction types. ${
     offLabelEntries.length > 0
       ? `Off-label indications detected: ${offLabelEntries.map(([ind, c]) => `${ind} (${c} reports)`).join("; ")}.`
       : "No strong off-label indication signals detected."

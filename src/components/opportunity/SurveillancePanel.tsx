@@ -234,17 +234,21 @@ export function SurveillancePauseButton({
   resuming,
   onPause,
   onResume,
+  showResume = true,
 }: {
   status: OpportunityStatus;
   pausing: boolean;
   resuming: boolean;
   onPause: () => void;
   onResume: () => void;
+  /** When false, hide resume control (e.g. sidebar owns resume for V3) */
+  showResume?: boolean;
 }) {
   const canPauseSurveillance =
     status === "surveillance" || status === "complete";
 
   if (status === "paused") {
+    if (showResume === false) return null;
     return (
       <button
         type="button"

@@ -23,7 +23,7 @@ export function OpportunityFeed({
 }) {
   const params = useParams();
   const opportunityId = params.id as string;
-  const { streamingCards, isStreaming, status, changeLog, lastSurveillanceCheck, actionabilityZone } =
+  const { streamingCards, isStreaming, status, changeLog, lastSurveillanceCheck, actionabilityZone, opportunity } =
     useOpportunityStore();
 
   const surveillanceActive =
@@ -54,7 +54,9 @@ export function OpportunityFeed({
       Watching
     </span>
   ) : status === "paused" ? (
-    <span className="text-xs font-medium text-gray-500">Paused</span>
+    <span className="text-xs font-medium text-gray-500">
+      {opportunity?.decision_brief ? "Complete · surveillance paused" : "Paused mid-run"}
+    </span>
   ) : status === "complete" ? (
     <span className="text-xs font-medium text-brand-teal">Complete</span>
   ) : null;

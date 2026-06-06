@@ -1,0 +1,21 @@
+patient_id,primary_diagnosis,comorbidities,biomarkers,resistance_status,notes
+ONC-001,non-small cell lung cancer,hypertension|type 2 diabetes,TP53 loss-of-function|STK11 loss-of-function|no dominant oncogenic driver,anti-PD1 primary refractory,No KRAS/EGFR/BRAF driver; candidate for non-driver LOF biology
+ONC-002,metastatic colorectal cancer,anemia|hyperlipidemia,APC loss-of-function|SMAD4 loss-of-function|no dominant oncogenic driver,anti-EGFR acquired resistance,Microsatellite stable; no actionable hotspot mutation
+ONC-003,triple-negative breast cancer,obesity|asthma,BRCA1 loss-of-function|PTEN loss-of-function|no dominant oncogenic driver,chemotherapy refractory,No HER2 amplification; LOF tumor suppressor profile
+ONC-004,pancreatic adenocarcinoma,diabetes mellitus|cachexia,CDKN2A loss-of-function|SMAD4 loss-of-function|no dominant oncogenic driver,gemcitabine/nab-paclitaxel refractory,KRAS wild-type subset; multiple LOF alterations
+ONC-005,high-grade serous ovarian cancer,hypertension,TP53 loss-of-function|BRCA2 loss-of-function|no dominant oncogenic driver,platinum-resistant,Homologous recombination deficient without dominant oncogene
+ONC-006,hepatocellular carcinoma,cirrhosis|hepatitis C,ARID1A loss-of-function|RB1 loss-of-function|no dominant oncogenic driver,sorafenib refractory,No classic driver mutation; immune exclusion phenotype
+ONC-007,melanoma,autoimmune thyroiditis,PTEN loss-of-function|CDKN2A loss-of-function|no dominant oncogenic driver,anti-PD1/anti-CTLA4 refractory,BRAF/NRAS wild-type; non-canonical resistance
+ONC-008,gastric adenocarcinoma,GERD|H pylori history,ARID1A loss-of-function|FAT4 loss-of-function|no dominant oncogenic driver,trastuzumab ineligible,HER2-negative; chromatin remodeler LOF
+ONC-009,renal cell carcinoma,hypertension|CKD stage 2,PBRM1 loss-of-function|BAP1 loss-of-function|no dominant oncogenic driver,IO/TKI combination refractory,Clear cell; no VHL-exclusive driver framing
+ONC-010,urothelial carcinoma,smoking history|COPD,RB1 loss-of-function|TP53 loss-of-function|no dominant oncogenic driver,platinum and PD-L1 refractory,FGFR3 wild-type; LOF-enriched genome
+ONC-011,esophageal adenocarcinoma,Barrett esophagus|obesity,CDKN2A loss-of-function|SMAD4 loss-of-function|no dominant oncogenic driver,chemo-IO progression,No ERBB2 amp; tumor suppressor LOF cluster
+ONC-012,glioblastoma,hypertension,TP53 loss-of-function|NF1 loss-of-function|no dominant oncogenic driver,temozolomide/bevacizumab refractory,IDH-wildtype; no EGFRvIII dominant driver
+ONC-013,endometrial carcinoma,obesity|PCOS,PTEN loss-of-function|ARID1A loss-of-function|no dominant oncogenic driver,pembrolizumab non-responder,POLE-ultra-mutated negative; LOF suppressor pattern
+ONC-014,prostate adenocarcinoma,benign prostatic hyperplasia,TP53 loss-of-function|RB1 loss-of-function|no dominant oncogenic driver,androgen deprivation refractory,Neuroendocrine transition suspected; no AR splice dominant
+ONC-015,cholangiocarcinoma,primary sclerosing cholangitis,SMAD4 loss-of-function|IDH1 wild-type|no dominant oncogenic driver,gemcitabine/cisplatin refractory,FGFR2 fusion negative; LOF-enriched
+ONC-016,small cell lung cancer,hypertension|COPD,RB1 loss-of-function|TP53 loss-of-function|no dominant oncogenic driver,platinum/etoposide refractory,Classic SCLC LOF; no targetable driver
+ONC-017,head and neck squamous cell carcinoma,HPV-negative|smoking,NOTCH1 loss-of-function|TP53 loss-of-function|no dominant oncogenic driver,cetuximab/platinum refractory,No PIK3CA hotspot; LOF tumor suppressors
+ONC-018,soft tissue sarcoma,none documented,TP53 loss-of-function|RB1 loss-of-function|no dominant oncogenic driver,anthracycline/ifosfamide refractory,Complex karyotype; no fusion oncogene
+ONC-019,acute myeloid leukemia,hypertension,TP53 loss-of-function|RUNX1 loss-of-function|no dominant oncogenic driver,hypomethylating agent refractory,No FLT3/NPM1 driver; LOF-dominant AML
+ONC-020,multiple myeloma,renal insufficiency stage 1,TP53 loss-of-function|DIS3 loss-of-function|no dominant oncogenic driver,proteasome/IMiD refractory,High-risk cytogenetics; no single dominant oncogene

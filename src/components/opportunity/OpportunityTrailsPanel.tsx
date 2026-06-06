@@ -8,6 +8,7 @@ import { SurveillanceRail } from "./SurveillanceRail";
 interface OpportunityTrailsPanelProps {
   onResume?: () => void;
   resuming?: boolean;
+  hypothesisIdFilter?: string;
 }
 
 const TRAIL_HEIGHT = "h-[min(72vh,780px)]";
@@ -37,6 +38,7 @@ function TrailColumnHeader({
 export function OpportunityTrailsPanel({
   onResume,
   resuming,
+  hypothesisIdFilter,
 }: OpportunityTrailsPanelProps) {
   return (
     <Panel
@@ -58,7 +60,11 @@ export function OpportunityTrailsPanel({
             description="Agent cards and regulatory challenges, newest first"
           />
           <ScrollArea className="min-h-0 flex-1">
-            <EvidenceStreamRail variant="main" embedded />
+            <EvidenceStreamRail
+              variant="main"
+              embedded
+              hypothesisIdFilter={hypothesisIdFilter}
+            />
           </ScrollArea>
         </section>
 

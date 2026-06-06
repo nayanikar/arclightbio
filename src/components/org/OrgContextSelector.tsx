@@ -34,11 +34,15 @@ export function OrgContextSelector({
         Organization Context
       </label>
       <Select
-        value={value}
+        value={value || undefined}
         onValueChange={(id) => id && onChange(id)}
       >
-        <SelectTrigger className="w-full bg-white">
-          <SelectValue placeholder="Select organization" />
+        <SelectTrigger className="h-11 w-full bg-white">
+          <SelectValue placeholder="Select organization">
+            {selected
+              ? `${selected.org_name} (${selected.org_type.replace(/_/g, " ")})`
+              : "Select organization"}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {sortedContexts.map((ctx) => (

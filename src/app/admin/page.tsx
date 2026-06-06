@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TopBar } from "@/components/layout/TopBar";
+import { PageContent } from "@/components/layout/PageContent";
 import { notifyOpportunitiesUpdated, SESSIONS_UPDATED_EVENT } from "@/lib/events";
 import type { ScoreBackfillRow } from "@/lib/scoreMaintenance";
 
@@ -12,11 +14,12 @@ function notifySessionsUpdated() {
 
 export default function AdminPage() {
   const router = useRouter();
-  const [busy, setBusy] = useState<"backfill" | "tags" | "stop" | null>(null);
+  const [busy, setBusy] = useState<"backfill" | "tags" | "stop" | "pipeline" | null>(null);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
   const [backfillReport, setBackfillReport] = useState<ScoreBackfillRow[]>([]);
   const [tagsResult, setTagsResult] = useState<string | null>(null);
   const [stopResult, setStopResult] = useState<string | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<string | null>(null);
 
   const runBackfill = async () => {
     setBusy("backfill");
@@ -36,6 +39,37 @@ export default function AdminPage() {
         notifySessionsUpdated();
       } else {
         setBackfillResult(data.error ?? "Backfill failed");
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runStopPipeline = async () => {
+    setBusy("pipeline");
+    setPipelineResult(null);
+    try {
+      const res = await fetch("/api/admin/stop-pipeline", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        const names =
+          Array.isArray(data.sessions) && data.sessions.length > 0
+            ? data.sessions
+                .map(
+                  (s: { id: string; search_query: string | null }) =>
+                    s.search_query?.slice(0, 40) ?? s.id.slice(0, 8)
+                )
+                .join(", ")
+            : null;
+        setPipelineResult(
+          `Stopped ${data.paused} pipeline${data.paused === 1 ? "" : "s"}` +
+            (data.aborted > 0 ? ` · aborted ${data.aborted} in-flight LLM call${data.aborted === 1 ? "" : "s"}` : "") +
+            (names ? ` (${names})` : "") +
+            `. ${data.skipped} skipped.`
+        );
+        notifySessionsUpdated();
+      } else {
+        setPipelineResult(data.error ?? "Stop pipeline failed");
       }
     } finally {
       setBusy(null);
@@ -81,21 +115,43 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <button
-        type="button"
-        onClick={() => router.push("/")}
-        className="text-sm text-gray-500 hover:text-gray-800"
-      >
-        ← Back to dashboard
-      </button>
+    <>
+      <TopBar
+        narrow
+        title="Dev admin"
+        subtitle="Hidden controls for development. Open with Shift+P from anywhere in the app."
+      />
 
-      <h1 className="mt-4 text-xl font-semibold text-gray-900">Dev admin</h1>
-      <p className="mt-1 text-sm text-gray-500">
-        Hidden controls for development. Open with Shift+P from anywhere in the app.
-      </p>
+      <PageContent narrow flush className="space-y-4">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="text-sm hover:underline"
+          style={{ color: "var(--color-text-tertiary)" }}
+        >
+          ← Back to dashboard
+        </button>
 
-      <div className="mt-8 space-y-4">
+        <section className="rounded-xl border border-[#D85A30]/30 bg-[#FFF8F5] p-4">
+          <h2 className="text-sm font-medium text-gray-900">Stop discovery pipelines</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Halt all running agent pipelines (<code className="text-[10px]">agents_running</code>
+            ). Aborts in-flight Claude calls and saves checkpoint progress so you can resume
+            later. Use this to preserve API credits mid-discovery.
+          </p>
+          <button
+            type="button"
+            onClick={runStopPipeline}
+            disabled={busy !== null}
+            className="mt-3 rounded-lg bg-[#D85A30] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy === "pipeline" ? "Stopping…" : "Stop all running pipelines"}
+          </button>
+          {pipelineResult && (
+            <p className="mt-2 text-xs text-gray-600">{pipelineResult}</p>
+          )}
+        </section>
+
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-medium text-gray-900">Score backfill</h2>
           <p className="mt-1 text-xs text-gray-500">
@@ -196,7 +252,7 @@ export default function AdminPage() {
             <p className="mt-2 text-xs text-gray-600">{tagsResult}</p>
           )}
         </section>
-      </div>
-    </div>
+      </PageContent>
+    </>
   );
 }

@@ -1,51 +1,97 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# See https://help.github.com/articles/ignoring-files/
 
-# dependencies
+# --- Dependencies ---
 /node_modules
 /.pnp
 .pnp.js
+.pnp.*
 .yarn/install-state.gz
 
-# testing
-/coverage
-
-# next.js
+# --- Next.js / build output ---
 /.next/
 /out/
-
-# production
 /build
+/dist
+.turbo
 
-# misc
-.DS_Store
-*.pem
+# --- Environment & secrets (never commit) ---
+.env
+.env.*
+!.env*.example
+!.env.example
 
-# debug
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Test & coverage ---
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# --- Logs & debug ---
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+*.log
 
-# local env files
-.env*.local
+# --- OS & editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
 
-# typescript build cache
-tsconfig.tsbuildinfo
+# --- Cursor (local IDE / agent state) ---
+.cursor/
 
-# accidental npm artifact files
+# --- Local runtime data (file-store mode when Supabase is not configured) ---
+/.data/
+
+# --- Spacebase enrollment keys & session state ---
+/.spacebase/
+
+# --- Vercel ---
+.vercel
+
+# --- Python (Spacebase helper scripts) ---
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+
+# --- Local audit & verification artifacts (E2E screenshots, agent scratch) ---
+.audit-tmp/
+.playwright-audit/
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp
+**/*.gif
+
+# --- Accidental npm artifact filenames ---
 arclight-bio@*
 11.16.0
 /next
 
-# python
-__pycache__/
-*.pyc
+# --- Docs & specs (not required to run the app; keep locally or in wiki) ---
+/issues.md
+/index.md
+/opportunity_space_build_spec.md
+/public/*_spec.md
 
-# vercel
-.vercel
-
-# local dev file store (no Supabase)
-/.data/
-
-# Spacebase1 enrollment keys and session state
-/.spacebase/
-
+# --- Spacebase CLI / marketplace SDK (not imported by Next.js runtime) ---
+/marketplace/
+/scripts/spacebase/

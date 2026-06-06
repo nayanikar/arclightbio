@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { Providers } from "@/components/Providers";
 
-const inter = Inter({
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans",
+});
+
+const newsreader = Newsreader({
   subsets: ["latin"],
   weight: ["400", "600"],
-  variable: "--font-inter",
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${ibmPlexSans.variable} ${newsreader.variable} font-sans antialiased`}>
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

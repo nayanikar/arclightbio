@@ -21,7 +21,7 @@ export async function searchPatents(
     body: JSON.stringify({
       query: { match_phrase: { title: query } },
       size: maxResults,
-      include: ["lens_id", "biblio", "publication_date"],
+      include: ["lens_id", "biblio", "date_published"],
     }),
   });
 
@@ -32,12 +32,13 @@ export async function searchPatents(
   const data = (await res.json()) as {
     data?: Array<{
       lens_id?: string;
+      date_published?: string;
       biblio?: {
         invention_title?: Array<{ text?: string }>;
         abstract?: Array<{ text?: string }>;
         applicants?: Array<{ extracted_name?: { value?: string } }>;
+        publication_reference?: { date?: string };
       };
-      publication_date?: string;
     }>;
   };
 
@@ -47,7 +48,8 @@ export async function searchPatents(
     abstract: p.biblio?.abstract?.[0]?.text ?? "",
     assignee:
       p.biblio?.applicants?.[0]?.extracted_name?.value ?? "Unknown assignee",
-    publicationDate: p.publication_date ?? "",
+    publicationDate:
+      p.date_published ?? p.biblio?.publication_reference?.date ?? "",
     source_url: `https://www.lens.org/lens/patent/${p.lens_id}`,
   }));
 }

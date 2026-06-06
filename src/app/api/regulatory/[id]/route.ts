@@ -34,18 +34,60 @@ export async function POST(
       );
     }
 
-    const allCards = [...obj.evidence_cards, ...obj.challenges.map((c) => ({
-      id: c.id,
-      content: c.content,
-      source_url: "",
-      source_type: "fda" as const,
-      contributing_agent: "regulatory" as const,
-      timestamp: new Date().toISOString(),
-      quality_scores: { sample_size: 0.5, study_design: 0.5, source_credibility: 0.5, replication: 0.5, recency: 0.5, composite: 0.5 },
-      regulatory_weight: 0.5,
-      raw_source_metadata: {},
-      is_challenge: true,
-    }))];
+    const isV2 = (obj.schema_version ?? 1) === 2;
+    const topHypothesis =
+      isV2 && obj.top_hypothesis_id
+        ? obj.hypotheses?.find((h) => h.id === obj.top_hypothesis_id)
+        : undefined;
+
+    const scopedEvidence = isV2 && topHypothesis
+      ? [
+          ...obj.evidence_cards.filter(
+            (c) => !c.hypothesis_id || c.hypothesis_id === topHypothesis.id
+          ),
+          ...(topHypothesis.evidence_cards ?? []),
+        ]
+      : obj.evidence_cards;
+
+    const uniqueEvidence = Array.from(
+      new Map(scopedEvidence.map((c) => [c.id, c])).values()
+    );
+
+    const scopedChallenges = isV2 && topHypothesis
+      ? (topHypothesis.challenges ?? obj.challenges)
+      : obj.challenges;
+
+    const hypothesisForPackage = topHypothesis
+      ? {
+          statement: topHypothesis.statement,
+          patient_population: topHypothesis.patient_population,
+          unmet_need: topHypothesis.unmet_need,
+          org_positioning: topHypothesis.org_positioning,
+        }
+      : obj.hypothesis;
+
+    const allCards = [
+      ...uniqueEvidence,
+      ...scopedChallenges.map((c) => ({
+        id: c.id,
+        content: c.content,
+        source_url: "",
+        source_type: "fda" as const,
+        contributing_agent: "regulatory" as const,
+        timestamp: new Date().toISOString(),
+        quality_scores: {
+          sample_size: 0.5,
+          study_design: 0.5,
+          source_credibility: 0.5,
+          replication: 0.5,
+          recency: 0.5,
+          composite: 0.5,
+        },
+        regulatory_weight: 0.5,
+        raw_source_metadata: {},
+        is_challenge: true,
+      })),
+    ];
 
     const provenance_trail = buildProvenanceTrail(allCards);
     const version_lock_hash = versionLockHash(obj);
@@ -56,9 +98,12 @@ export async function POST(
 
     try {
       compliance = await callAgentJson(COMPLIANCE_CHECKER_SYSTEM, JSON.stringify({
-        hypothesis: obj.hypothesis,
-        evidence_cards: obj.evidence_cards.slice(0, 20),
+        hypothesis: hypothesisForPackage,
+        evidence_cards: uniqueEvidence.slice(0, 20),
         confidence_score: obj.confidence_score,
+        decision_brief: obj.decision_brief ?? null,
+        top_hypothesis_id: obj.top_hypothesis_id ?? null,
+        mechanistic_chain: topHypothesis?.mechanistic_chain ?? null,
       }));
     } catch {
       compliance = {

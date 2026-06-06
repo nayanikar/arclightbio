@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npx tsx --test src/lib/scientificLanguage.test.ts src/lib/blackboardRun.test.ts src/lib/scoring.test.ts"
+    "test": "npx tsx --test src/lib/scientificLanguage.test.ts src/lib/blackboardRun.test.ts src/lib/scoring.test.ts src/lib/hypothesisRanking.test.ts src/lib/blackboardRunV2.test.ts src/lib/hypothesisCards.test.ts src/lib/scoringCardFilter.test.ts src/lib/hypothesisTargetAlign.test.ts src/lib/clinicalTrialNovelty.test.ts src/lib/dashboardDisplay.test.ts src/lib/trailLabels.test.ts src/lib/innovationProfile.test.ts src/lib/targetDruggabilityGate.test.ts src/lib/programSummary.test.ts src/lib/pipelineBlocked.test.ts src/lib/structureProse.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

@@ -188,6 +188,139 @@ Use hedged language in novelty_statement (e.g. "evidence suggests", "consistent 
 In novelty_statement, specify intervention class (e.g. TLR7 agonist) not target approval alone.
 Return valid JSON only.`;
 
+function normalizeNoveltyVerdict(
+  raw: Partial<NoveltyVerdict> & { target?: string },
+  fallbackTarget: string
+): NoveltyVerdict {
+  const verdict =
+    raw.verdict === "confirmed" ||
+    raw.verdict === "likely" ||
+    raw.verdict === "uncertain" ||
+    raw.verdict === "not_first_in_class"
+      ? raw.verdict
+      : raw.is_first_in_class === true
+        ? "likely"
+        : raw.is_first_in_class === false
+          ? "not_first_in_class"
+          : "uncertain";
+
+  return {
+    is_first_in_class: Boolean(raw.is_first_in_class),
+    confidence:
+      typeof raw.confidence === "number" && !Number.isNaN(raw.confidence)
+        ? raw.confidence
+        : 0.45,
+    verdict,
+    prior_art_found: Array.isArray(raw.prior_art_found)
+      ? raw.prior_art_found.filter(Boolean)
+      : [],
+    differentiation_angle:
+      raw.differentiation_angle?.trim() ||
+      "Further differentiation analysis required.",
+    novelty_statement:
+      raw.novelty_statement?.trim() ||
+      `Novelty assessment for ${fallbackTarget} — verdict ${verdict.replace(/_/g, " ")}.`,
+    target: raw.target?.trim() || fallbackTarget,
+  };
+}
+
+async function firstInClassNoveltyCheckForHypothesis(
+  obj: OpportunityObject
+): Promise<NoveltyVerdict[]> {
+  const searchTerm = obj.hypothesis.statement.slice(0, 160);
+  const indication = obj.hypothesis.patient_population;
+
+  const [trialResult, patentResult] = await Promise.allSettled([
+    searchTrialsByTerm(searchTerm, 10, false),
+    searchPatents(`${searchTerm} ${indication}`, 5),
+  ]);
+
+  const trialsOk = trialResult.status === "fulfilled";
+  const patentsOk = patentResult.status === "fulfilled";
+  const activeTrials =
+    trialResult.status === "fulfilled" ? trialResult.value : [];
+  const patents =
+    patentResult.status === "fulfilled" ? patentResult.value : [];
+
+  const recruitingTrials = activeTrials.filter((t) =>
+    /RECRUITING|ACTIVE|NOT_YET_RECRUITING/i.test(t.status)
+  );
+
+  try {
+    const verdict = normalizeNoveltyVerdict(
+      await callAgentJson<Partial<NoveltyVerdict>>(
+        NOVELTY_SYSTEM,
+        `Assess first-in-class / differentiation for this mechanism-level thesis (no ranked target list):
+Thesis: ${obj.hypothesis.statement}
+Indication: ${indication}
+
+Active trials found: ${recruitingTrials.length} (${recruitingTrials.slice(0, 3).map((t) => t.title).join("; ")})
+Patents found: ${patents.length} (${patents.slice(0, 3).map((p) => p.title).join("; ")})
+
+Return same JSON schema with target set to "MECHANISM".`
+      ),
+      "MECHANISM"
+    );
+    return [verdict];
+  } catch {
+    const hasPriorArt = patents.length > 0 || recruitingTrials.length > 2;
+    return [
+      {
+        is_first_in_class: !hasPriorArt,
+        confidence: hasPriorArt ? 0.35 : 0.45,
+        verdict: hasPriorArt ? "not_first_in_class" : "uncertain",
+        prior_art_found: [
+          ...patents.slice(0, 2).map((p) => p.title),
+          ...recruitingTrials.slice(0, 2).map((t) => t.title),
+        ],
+        differentiation_angle: "Mechanism-level assessment without ranked targets.",
+        novelty_statement: hasPriorArt
+          ? `Mechanism thesis: prior art detected in trials/patents — differentiation requires explicit modality or target claim.`
+          : `Mechanism thesis: no direct prior art in searched trials/patents; novelty uncertain without target list.`,
+        target: "MECHANISM",
+      },
+    ];
+  }
+}
+
+async function insertNoveltyCard(
+  obj: OpportunityObject,
+  noveltyVerdicts: NoveltyVerdict[],
+  partial: boolean
+): Promise<void> {
+  if (noveltyVerdicts.length === 0) return;
+
+  const avgConfidence =
+    noveltyVerdicts.reduce((s, v) => s + v.confidence, 0) /
+    noveltyVerdicts.length;
+  const noveltyAssessmentFailed = noveltyVerdicts.some((v) =>
+    (v.novelty_statement ?? "").includes("prior-art search unavailable")
+  );
+
+  await insertEvidenceCard(obj.id, {
+    content: `FIRST-IN-CLASS NOVELTY CHECK\n${formatNoveltyVerdict(noveltyVerdicts)}`,
+    source_url: "",
+    source_type: "clinicaltrials",
+    contributing_agent: "clinical_trial",
+    is_novelty_check: true,
+    quality_scores: {
+      sample_size: 0.6,
+      study_design: 0.7,
+      source_credibility: 0.85,
+      replication: 0.5,
+      recency: 0.9,
+      composite: avgConfidence,
+    },
+    regulatory_weight: avgConfidence,
+    raw_source_metadata: {
+      novelty_verdicts: noveltyVerdicts,
+      partial: partial || noveltyAssessmentFailed,
+      novelty_assessment_failed: noveltyAssessmentFailed,
+      mechanism_level: noveltyVerdicts[0]?.target === "MECHANISM",
+    },
+  });
+}
+
 async function firstInClassNoveltyCheck(
   obj: OpportunityObject,
   targets: RankedTarget[]
@@ -225,9 +358,10 @@ async function firstInClassNoveltyCheck(
     const allSourcesOk = fdaOk && trialsOk && patentsOk;
 
     try {
-      const verdict = await callAgentJson<NoveltyVerdict>(
-        NOVELTY_SYSTEM,
-        `Assess first-in-class status for target ${target.target_name} (${gene}) in indication ${indication}.
+      const verdict = normalizeNoveltyVerdict(
+        await callAgentJson<Partial<NoveltyVerdict>>(
+          NOVELTY_SYSTEM,
+          `Assess first-in-class status for target ${target.target_name} (${gene}) in indication ${indication}.
 
 FDA approvals found: ${JSON.stringify(fdaApprovals.slice(0, 5))}
 Active trials found: ${recruitingTrials.length} (${recruitingTrials.slice(0, 3).map((t) => t.title).join("; ")})
@@ -242,8 +376,10 @@ Return:
   "differentiation_angle": string,
   "novelty_statement": string
 }`
+        ),
+        gene
       );
-      verdicts.push({ ...verdict, target: gene });
+      verdicts.push(verdict);
     } catch {
       if (!allSourcesOk) {
         verdicts.push({
@@ -259,18 +395,27 @@ Return:
           target: gene,
         });
       } else {
+        const hasPriorArt =
+          fdaApprovals.length > 0 ||
+          patents.length > 0 ||
+          recruitingTrials.length > 2;
         verdicts.push({
           is_first_in_class:
-            recruitingTrials.length === 0 && fdaApprovals.length === 0,
-          confidence: 0.5,
-          verdict:
-            recruitingTrials.length > 2 ? "not_first_in_class" : "uncertain",
+            !hasPriorArt &&
+            recruitingTrials.length === 0 &&
+            fdaApprovals.length === 0 &&
+            patents.length === 0,
+          confidence: hasPriorArt ? 0.35 : 0.5,
+          verdict: hasPriorArt ? "not_first_in_class" : "uncertain",
           prior_art_found: [
             ...fdaApprovals.map((a) => a.brandName),
+            ...patents.slice(0, 2).map((p) => p.title),
             ...recruitingTrials.slice(0, 2).map((t) => t.title),
           ],
           differentiation_angle: "Further differentiation analysis required.",
-          novelty_statement: `${gene} in ${indication}: automated partial assessment.`,
+          novelty_statement: hasPriorArt
+            ? `${gene} in ${indication}: prior art detected in FDA approvals, patents, and/or active trials — not first-in-class.`
+            : `${gene} in ${indication}: automated partial assessment — no prior art in searched sources.`,
           target: gene,
         });
       }
@@ -283,8 +428,9 @@ Return:
 function formatNoveltyVerdict(verdicts: NoveltyVerdict[]): string {
   return verdicts
     .map((v) => {
-      const verdictLabel = v.verdict.replace(/_/g, " ");
-      return `${v.target}: first-in-class assessment — ${verdictLabel} (confidence ${(v.confidence * 100).toFixed(0)}%) — ${v.novelty_statement}${v.prior_art_found.length ? ` Prior art: ${v.prior_art_found.slice(0, 2).join("; ")}.` : ""}`;
+      const verdictLabel = (v.verdict ?? "uncertain").replace(/_/g, " ");
+      const statement = v.novelty_statement ?? "Novelty assessment incomplete.";
+      return `${v.target}: first-in-class assessment — ${verdictLabel} (confidence ${((v.confidence ?? 0) * 100).toFixed(0)}%) — ${statement}${v.prior_art_found?.length ? ` Prior art: ${v.prior_art_found.slice(0, 2).join("; ")}.` : ""}`;
     })
     .join("\n");
 }
@@ -406,35 +552,9 @@ export async function clinicalTrialAgent(obj: OpportunityObject): Promise<void> 
 
   if (rankedTargets.length > 0) {
     const noveltyVerdicts = await firstInClassNoveltyCheck(obj, rankedTargets);
-    if (noveltyVerdicts.length > 0) {
-      const avgConfidence =
-        noveltyVerdicts.reduce((s, v) => s + v.confidence, 0) /
-        noveltyVerdicts.length;
-      const noveltyAssessmentFailed = noveltyVerdicts.some((v) =>
-        v.novelty_statement.includes("prior-art search unavailable")
-      );
-
-      await insertEvidenceCard(obj.id, {
-        content: `FIRST-IN-CLASS NOVELTY CHECK\n${formatNoveltyVerdict(noveltyVerdicts)}`,
-        source_url: "",
-        source_type: "clinicaltrials",
-        contributing_agent: "clinical_trial",
-        is_novelty_check: true,
-        quality_scores: {
-          sample_size: 0.6,
-          study_design: 0.7,
-          source_credibility: 0.85,
-          replication: 0.5,
-          recency: 0.9,
-          composite: avgConfidence,
-        },
-        regulatory_weight: avgConfidence,
-        raw_source_metadata: {
-          novelty_verdicts: noveltyVerdicts,
-          partial: partial || noveltyAssessmentFailed,
-          novelty_assessment_failed: noveltyAssessmentFailed,
-        },
-      });
-    }
+    await insertNoveltyCard(obj, noveltyVerdicts, partial);
+  } else {
+    const noveltyVerdicts = await firstInClassNoveltyCheckForHypothesis(obj);
+    await insertNoveltyCard(obj, noveltyVerdicts, partial);
   }
 }

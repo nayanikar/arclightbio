@@ -30,8 +30,11 @@ export const INDICATION_RISK_WEIGHTS: Record<
 export function getIndicationRiskWeights(
   indicationType?: IndicationType | null
 ): IndicationRiskWeights {
+  if (indicationType == null) {
+    return INDICATION_RISK_WEIGHTS.autoimmune_chronic;
+  }
   return (
-    INDICATION_RISK_WEIGHTS[indicationType ?? "oncology"] ??
-    INDICATION_RISK_WEIGHTS.oncology
+    INDICATION_RISK_WEIGHTS[indicationType] ??
+    INDICATION_RISK_WEIGHTS.autoimmune_chronic
   );
 }

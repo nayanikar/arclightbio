@@ -3,20 +3,33 @@
 import { useMemo } from "react";
 import { Panel } from "@/components/layout/Panel";
 import { useOpportunityStore } from "@/store/opportunityStore";
+import type { EvidenceCard, ActionabilityZone } from "@/types/OpportunityObject";
 import { buildSessionSummaryBullets } from "@/lib/sessionSummary";
 
-export function SessionSummaryPanel() {
+export function SessionSummaryPanel({
+  cards,
+  confidenceScore: confidenceOverride,
+  actionabilityZone: zoneOverride,
+}: {
+  cards?: EvidenceCard[];
+  confidenceScore?: number;
+  actionabilityZone?: ActionabilityZone;
+}) {
   const { streamingCards, confidenceScore, actionabilityZone } =
     useOpportunityStore();
+
+  const effectiveCards = cards ?? streamingCards;
+  const effectiveConfidence = confidenceOverride ?? confidenceScore;
+  const effectiveZone = zoneOverride ?? actionabilityZone;
 
   const bullets = useMemo(
     () =>
       buildSessionSummaryBullets({
-        confidenceScore,
-        actionabilityZone,
-        cards: streamingCards,
+        confidenceScore: effectiveConfidence,
+        actionabilityZone: effectiveZone,
+        cards: effectiveCards,
       }),
-    [confidenceScore, actionabilityZone, streamingCards]
+    [effectiveConfidence, effectiveZone, effectiveCards]
   );
 
   if (bullets.length === 0) return null;

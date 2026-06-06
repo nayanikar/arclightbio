@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getOpportunityObject } from "@/lib/db";
 import { resumeOpportunity } from "@/lib/sessionControl";
-import { scheduleBlackboardRun } from "@/lib/blackboard";
+import {
+  scheduleBlackboardRun,
+  scheduleBlackboardRunV2,
+  scheduleBlackboardRunV3,
+} from "@/lib/blackboard";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +22,13 @@ export async function POST(
     const result = await resumeOpportunity(params.id);
 
     if (result.needsBlackboardResume) {
-      scheduleBlackboardRun(params.id, { resume: true });
+      if (obj.schema_version === 3) {
+        scheduleBlackboardRunV3(params.id, { resume: true });
+      } else if (obj.schema_version === 2) {
+        scheduleBlackboardRunV2(params.id, { resume: true });
+      } else {
+        scheduleBlackboardRun(params.id, { resume: true });
+      }
     }
 
     return NextResponse.json({

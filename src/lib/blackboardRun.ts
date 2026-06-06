@@ -22,6 +22,12 @@ import {
 import { generateSurveillanceTags } from "@/lib/surveillanceTags";
 import { broadcastIntentSpaceEvent } from "@/lib/intentSpace/broadcaster";
 import type { IntentSpaceAgent } from "@/lib/intentSpace/types";
+import {
+  activePipelineRun,
+  beginPipelineRun,
+  endPipelineRun,
+  isPipelineAbortedError,
+} from "@/lib/pipelineRunControl";
 import type {
   BlackboardAgentEvent,
   BlackboardState,
@@ -149,7 +155,7 @@ async function patchBlackboardState(
   return next;
 }
 
-async function recordAgentEvent(
+export async function recordAgentEvent(
   opportunityId: string,
   event: Omit<BlackboardAgentEvent, "at">
 ): Promise<void> {
@@ -174,6 +180,8 @@ async function isPaused(opportunityId: string): Promise<boolean> {
   const obj = await getOpportunityObject(opportunityId);
   return obj?.status === "paused";
 }
+
+export { isPaused as checkBlackboardPaused };
 
 export async function refreshScores(opportunityId: string): Promise<void> {
   const obj = await getOpportunityObject(opportunityId);
@@ -349,7 +357,9 @@ export async function runBlackboard(
     return { ok: false, reason: "lock_busy" };
   }
 
+  beginPipelineRun(opportunityId);
   try {
+    return await activePipelineRun.run({ opportunityId }, async () => {
     const obj = await getOpportunityObject(opportunityId);
     if (!obj) {
       return { ok: false, reason: "not_found" };
@@ -481,7 +491,11 @@ export async function runBlackboard(
     }
 
     return { ok: true };
+    });
   } catch (err) {
+    if (isPipelineAbortedError(err)) {
+      return { ok: false, reason: "paused" };
+    }
     console.error("Blackboard fatal error:", err);
     const obj = await getOpportunityObject(opportunityId);
     if (obj && obj.status === "agents_running") {
@@ -489,6 +503,7 @@ export async function runBlackboard(
     }
     return { ok: false, reason: "fatal_error" };
   } finally {
+    endPipelineRun(opportunityId);
     await lock.release();
   }
 }
