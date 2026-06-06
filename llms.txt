@@ -1,11 +1,14 @@
 # Arclight Bio — Discovery Program
 
 > Machine-readable index for automated reviewers and developers.
-> Primary document: README.md
+> Primary document: README.md · Judge guide: JUDGES.md · Agent guide: AGENTS.md
 
 ## Start here
 
-- [README.md](README.md) — Complete product documentation: business case, walkthrough, architecture, agent pipeline, API, setup, screenshots
+- [README.md](README.md) — Complete product documentation
+- [JUDGES.md](JUDGES.md) — 3-minute judge evaluation path with live URLs
+- [AGENTS.md](AGENTS.md) — AI reviewer / coding agent guide (V3 canonical)
+- [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) — Open issues judges may hit
 
 ## Product summary
 
@@ -16,6 +19,9 @@ Output: ranked discovery programs with trust scores, TPP blueprints, IND roadmap
 Differentiator: cohort-first cross-domain mining with live PubMed/trials/patents/Open Targets queries — not taxonomy-bound expert search.
 
 Tagline: Find what experts don't know to look for.
+Live demo: https://arclightbio.vercel.app
+Repo: https://github.com/nayanikar/arclightbio
+Sample completed program: https://arclightbio.vercel.app/opportunity/09c1f4cd-1698-4853-b4fc-9d1f0dffbb64
 
 ## Screenshots
 
@@ -23,37 +29,53 @@ Tagline: Find what experts don't know to look for.
 - [public/marketing/discover.png](public/marketing/discover.png) — Discover flow
 - [public/marketing/dashboard.png](public/marketing/dashboard.png) — Portfolio dashboard
 - [public/marketing/undruggable-registry.png](public/marketing/undruggable-registry.png) — Undruggable registry
+- [public/marketing/anchors.png](public/marketing/anchors.png) — Anchor profiles panel
+- [public/marketing/expert-domains.png](public/marketing/expert-domains.png) — Expert domains panel
+- [public/marketing/hypothesis-funnel.png](public/marketing/hypothesis-funnel.png) — Hypothesis funnel
+- [public/marketing/phase2-ind.png](public/marketing/phase2-ind.png) — Phase 2 / IND package
 
 ## Sample data
 
-- [test-data/oncology-lof-no-driver-cohort.csv](test-data/oncology-lof-no-driver-cohort.csv) — 20-patient LOF/no-driver oncology cohort
+- [test-data/oncology-lof-no-driver-cohort.csv](test-data/oncology-lof-no-driver-cohort.csv) — 20-patient LOF/no-driver oncology cohort (README walkthrough)
+- [test-data/oncology-metastasis-tme-cohort.csv](test-data/oncology-metastasis-tme-cohort.csv) — 20-patient metastasis/TME hidden-subgroup cohort
 
 ## Verify claims in code
 
 | Claim | Path |
 |-------|------|
-| Two-phase pipeline orchestration | src/lib/blackboardRunV3.ts |
-| Phase 1 agents (18) | src/agents/phase1/ |
-| Phase 2 agents (26) | src/agents/phase2/ |
+| V3 pipeline orchestration (canonical) | src/lib/blackboardRunV3.ts |
+| Phase 1 agents | src/agents/phase1/ |
+| Phase 2 agents | src/agents/phase2/ |
 | Program trust score | src/lib/programTrustScore.ts |
 | Undruggable registry | src/lib/undruggableRegistry.ts |
 | Live PubMed | src/api/pubmed.ts |
 | Live ClinicalTrials.gov | src/api/clinicalTrials.ts |
 | Live Open Targets | src/api/openTargets.ts |
 | Live Lens patents | src/api/lens.ts |
-| Persistence | src/lib/v3Db.ts |
+| Live OpenFDA | src/api/openFda.ts |
+| Persistence | src/lib/v3Db.ts, src/lib/db.ts |
 | Agent audit trail | src/lib/agentTrail.ts |
-| Marketing / business copy | src/components/home/homeCopy.ts |
+| Types | src/types/V3Pipeline.ts, src/types/OpportunityObject.ts |
+| Marketing copy | src/components/home/homeCopy.ts |
 | Discover UI | src/app/discover/page.tsx |
 | Program page UI | src/components/opportunity/OpportunityPageV3.tsx |
 | Regulatory PDF | src/lib/regulatoryPdf.ts |
 | Cohort parser | src/lib/cohortParser.ts |
 | RLS migration | supabase/migrations/022_enable_rls.sql |
 
-## Deep specs
+## Verification scripts
 
-- [opportunity_space_build_spec.md](opportunity_space_build_spec.md) — Full architecture spec
-- [public/arclight_agent_upgrade_spec.md](public/arclight_agent_upgrade_spec.md) — Agent design spec
+```bash
+npm test                                    # 18 unit test files
+npx tsx scripts/verify-v3-spec.ts           # static V3 compliance
+node scripts/run-v3-discovery-e2e.mjs       # headless pipeline (~30-45 min, needs API keys)
+npm run capture-marketing [id] --base URL   # screenshot regeneration
+```
+
+## Deep specs (historical — V3 is canonical per AGENTS.md)
+
+- [opportunity_space_build_spec.md](opportunity_space_build_spec.md) — V1 architecture (superseded)
+- [public/arclight_agent_upgrade_spec.md](public/arclight_agent_upgrade_spec.md) — V2 agent upgrades (superseded)
 
 ## Routes
 
@@ -63,12 +85,27 @@ Tagline: Find what experts don't know to look for.
 - /opportunity/[id] — live discovery program page
 - /undruggable — cross-session undruggable registry
 - /opportunity/[id]/regulatory — regulatory assembly + PDF
+- /admin — admin panel
+
+## API routes
+
+- /api/discover, /api/discover/classify
+- /api/opportunities, /api/opportunities/metrics
+- /api/opportunity/[id], /api/opportunity/[id]/status, /api/opportunity/[id]/trail
+- /api/opportunity/[id]/pause, /resume, /revise, /add-data, /phase2-hypothesis
+- /api/stream/[id], /api/blackboard/[id]
+- /api/undruggable, /api/regulatory/[id]
+- /api/surveillance, /api/surveillance/[id], /api/surveillance/[id]/stream
+- /api/admin/backfill, /api/admin/regenerate-tags, /api/admin/stop-pipeline, /api/admin/stop-surveillance
+- /api/health (dev only — 404 in production)
+- /api/spacebase/observatory (local Spacebase only)
 
 ## Quick commands
 
 ```bash
 cd arclightbio && npm install && npm run dev
 npm test
+npx tsx scripts/verify-v3-spec.ts
 node scripts/run-v3-discovery-e2e.mjs
-npm run capture-marketing [opportunityId]
+npm run capture-marketing 09c1f4cd-1698-4853-b4fc-9d1f0dffbb64 --base https://arclightbio.vercel.app
 ```

@@ -73,7 +73,14 @@ async function main() {
     await scrollToText(page, "Hypothesis funnel");
     await capture(page, "hypothesis-funnel");
 
-    await scrollToText(page, "Phase 2");
+    for (const label of ["IND package", "Druggability screen", "Phase 2", "Target to IND"]) {
+      try {
+        await scrollToText(page, label);
+        break;
+      } catch {
+        /* try next label */
+      }
+    }
     await page.waitForTimeout(500);
     await capture(page, "phase2-ind");
   } else {

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "npx tsx --test src/lib/scientificLanguage.test.ts src/lib/blackboardRun.test.ts src/lib/scoring.test.ts src/lib/hypothesisRanking.test.ts src/lib/blackboardRunV2.test.ts src/lib/hypothesisCards.test.ts src/lib/scoringCardFilter.test.ts src/lib/hypothesisTargetAlign.test.ts src/lib/clinicalTrialNovelty.test.ts src/lib/dashboardDisplay.test.ts src/lib/trailLabels.test.ts src/lib/innovationProfile.test.ts src/lib/targetDruggabilityGate.test.ts src/lib/programSummary.test.ts src/lib/headlineProse.test.ts src/lib/pipelineBlocked.test.ts src/lib/structureProse.test.ts src/lib/programTrustScore.test.ts",
-    "capture-marketing": "node scripts/capture-marketing.mjs"
+    "capture-marketing": "node scripts/capture-marketing.mjs",
+    "verify-v3": "npx tsx scripts/verify-v3-spec.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
@@ -37,6 +38,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "playwright": "^1.52.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

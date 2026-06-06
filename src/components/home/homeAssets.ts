@@ -1,4 +1,4 @@
-export const marketingAssetsReady = false;
+export const marketingAssetsReady = true;
 
 export const marketingScreenshots = {
   dashboard: {

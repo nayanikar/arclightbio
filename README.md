@@ -10,6 +10,8 @@
 | **Secondary fit** | 05 — Regulatory & Documentation |
 | **Product type** | AI-native commercial development discovery platform |
 | **Live demo** | [https://arclightbio.vercel.app](https://arclightbio.vercel.app) |
+| **Judge quick-start** | [JUDGES.md](JUDGES.md) — 3-min path with sample completed program |
+| **Repository** | [github.com/nayanikar/arclightbio](https://github.com/nayanikar/arclightbio) |
 | **Demo video** | _See [Submission TODOs](#submission-todos)_ |
 
 **Discovery Program** is an autonomous research system for pharmaceutical commercial development. Upload a patient cohort and a clinical question — specialized agents run a two-phase pipeline from anchor populations through a structured hypothesis funnel to IND-ready program assessments, querying **live** PubMed, ClinicalTrials.gov, Open Targets, patents, and FDA data at every step.
@@ -50,7 +52,18 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Requires **Node.js 18.17+**.
 
-### Five-minute walkthrough
+### Judge quick-start (~3 minutes)
+
+See **[JUDGES.md](JUDGES.md)** for the full evaluation guide. Fastest path:
+
+| Step | Action |
+|------|--------|
+| 1 | Open [Dashboard](https://arclightbio.vercel.app/dashboard) — **10+ discovery programs** with trust scores |
+| 2 | Open [sample completed program](https://arclightbio.vercel.app/opportunity/09c1f4cd-1698-4853-b4fc-9d1f0dffbb64) — anchors, funnel, Phase 2, audit trail |
+| 3 | Browse [Undruggable registry](https://arclightbio.vercel.app/undruggable) — cross-session target learning |
+| 4 | Skim [Home](https://arclightbio.vercel.app) — product narrative |
+
+### Full walkthrough (launch a new discovery — ~30–45 min pipeline)
 
 | Step | Action |
 |------|--------|
@@ -63,9 +76,14 @@ Open [http://localhost:3000](http://localhost:3000). Requires **Node.js 18.17+**
 
 **Sample query:** _What non-driver loss-of-function biology in refractory solid and heme tumors suggests intervention-ready programs beyond standard oncogenic driver targeting?_
 
-**Sample cohort:** 20 refractory oncology patients with LOF tumor suppressor profiles and no dominant oncogenic driver — designed to surface non-obvious cross-domain biology (`test-data/oncology-lof-no-driver-cohort.csv`).
+**Sample cohorts:**
 
-Run tests: `npm test` (16 unit test files). Optional headless pipeline: `node scripts/run-v3-discovery-e2e.mjs`.
+| File | Use case |
+|------|----------|
+| `test-data/oncology-lof-no-driver-cohort.csv` | LOF / no-driver refractory oncology — README walkthrough default |
+| `test-data/oncology-metastasis-tme-cohort.csv` | Metastasis / TME hidden-subgroup — Pfizer-style heterogeneous indication demo |
+
+Run tests: `npm test` (18 unit test files). Verify V3 spec: `npx tsx scripts/verify-v3-spec.ts`. Optional headless pipeline: `node scripts/run-v3-discovery-e2e.mjs` (~30–45 min).
 
 ---
 
@@ -154,6 +172,8 @@ On launch, agents schedule asynchronously. The UI redirects to the live discover
 Route: `/opportunity/[id]`
 
 The program page is the core product surface. While agents run, the page streams live updates via Server-Sent Events: agent status, audit trail entries, evidence cards, and score changes.
+
+![Discovery program page — anchor profiles, expert domains, hypothesis funnel, Phase 2](public/marketing/hypothesis-funnel.png)
 
 #### Header
 
@@ -590,6 +610,8 @@ See [`.env.local.example`](.env.local.example).
 
 Run in order in Supabase SQL Editor: **`001` → `022`**. Critical path: `016_v3_pipeline.sql` through `019_agent_trail.sql`, `022_enable_rls.sql`.
 
+**Fresh install FK note:** `001_opportunity_objects.sql` references `org_contexts` — if migration 001 fails, run `003_org_contexts.sql` first, then continue from 001.
+
 ### Vercel deployment (production)
 
 | | |
@@ -638,7 +660,7 @@ Optional but recommended: `ADMIN_API_KEY` to protect `/api/admin/*` routes.
 ### Verify production deployment
 
 ```bash
-# Should return 9+ discovery programs from Supabase
+# Should return 10+ discovery programs from Supabase
 curl -s https://arclightbio.vercel.app/api/opportunities \
   | python3 -c "import sys,json; print(len(json.load(sys.stdin)['opportunities']))"
 
@@ -653,7 +675,7 @@ curl -s https://arclightbio.vercel.app/api/undruggable
 
 | Service | Status |
 |---------|--------|
-| Supabase (discovery programs, cohorts, trail) | Connected — 9 programs in portfolio |
+| Supabase (discovery programs, cohorts, trail) | Connected — 10+ programs in portfolio |
 | Anthropic Claude | Connected — live query classification |
 | PubMed (NCBI) | Connected — evidence cards with live URLs |
 | ClinicalTrials.gov | Connected — no API key required |
@@ -702,16 +724,17 @@ Counts should match. If local is higher, those extra programs exist only in `loc
 ```bash
 npm run dev                  # Development server
 npm run build && npm start   # Production
-npm test                     # 16 unit test files
-npm run capture-marketing    # Screenshots → public/marketing/
-node scripts/run-v3-discovery-e2e.mjs   # Headless pipeline smoke test
+npm test                     # 18 unit test files
+npx tsx scripts/verify-v3-spec.ts       # Static V3 compliance checks
+npm run capture-marketing [id] --base URL  # Screenshots → public/marketing/
+node scripts/run-v3-discovery-e2e.mjs   # Headless pipeline smoke test (~30–45 min)
 ```
 
 ---
 
 ## Testing
 
-`npm test` runs 16 unit test files via `tsx --test`:
+`npm test` runs 18 unit test files via `tsx --test`:
 
 | Area | Test files |
 |------|------------|
@@ -719,7 +742,8 @@ node scripts/run-v3-discovery-e2e.mjs   # Headless pipeline smoke test
 | Hypothesis funnel | `hypothesisRanking.test.ts`, `hypothesisCards.test.ts`, `hypothesisTargetAlign.test.ts` |
 | Program trust | `programSummary.test.ts`, `innovationProfile.test.ts` |
 | Druggability gate | `targetDruggabilityGate.test.ts`, `pipelineBlocked.test.ts` |
-| Blackboard | `blackboardRun.test.ts` |
+| Blackboard | `blackboardRun.test.ts`, `blackboardRunV2.test.ts` |
+| Program trust & prose | `programTrustScore.test.ts`, `headlineProse.test.ts`, `pipelineBlocked.test.ts` |
 | Dashboard display | `dashboardDisplay.test.ts` |
 | Audit trail labels | `trailLabels.test.ts` |
 | Scientific language | `scientificLanguage.test.ts`, `structureProse.test.ts` |
@@ -745,9 +769,13 @@ Cross-disciplinary team spanning commercial and biology domain knowledge, full-s
 
 | Document | Purpose |
 |----------|---------|
+| [`JUDGES.md`](JUDGES.md) | **Human judges** — 3-minute evaluation path with live URLs |
+| [`AGENTS.md`](AGENTS.md) | **AI reviewers** — canonical V3 architecture, API surface, verify commands |
 | [`llms.txt`](llms.txt) | Machine-readable navigation index |
-| [`opportunity_space_build_spec.md`](opportunity_space_build_spec.md) | Full product architecture specification |
-| [`public/arclight_agent_upgrade_spec.md`](public/arclight_agent_upgrade_spec.md) | Agent design and behavior spec |
+| [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) | Open issues judges may encounter |
+| [`issues.md`](issues.md) | Full engineering audit tracker |
+| [`opportunity_space_build_spec.md`](opportunity_space_build_spec.md) | Historical V1 architecture spec (superseded by V3) |
+| [`public/arclight_agent_upgrade_spec.md`](public/arclight_agent_upgrade_spec.md) | Historical V2 agent spec (superseded by V3) |
 
 ---
 
@@ -755,7 +783,7 @@ Cross-disciplinary team spanning commercial and biology domain knowledge, full-s
 
 - [x] **Deploy the application** — live at [https://arclightbio.vercel.app](https://arclightbio.vercel.app)
 - [ ] **Add demo video URL** (60s walkthrough: home → discover → program page → dashboard → registry)
-- [ ] **Capture program page screenshots** after a completed discovery run (`npm run capture-marketing [opportunityId]`)
+- [x] **Capture program page screenshots** — `public/marketing/` (8 images; regenerate: `npm run capture-marketing 09c1f4cd-... --base https://arclightbio.vercel.app`)
 - [ ] **Refine team section** — add roles, contributions, and **Natasha's last name**
 - [ ] **Update metadata table** with final demo and video links
 - [ ] **Ship PDF export as a first-class feature** — one-click board-ready program brief from the discovery program page (regulatory PDF exists today at `/opportunity/[id]/regulatory`; add portfolio/BD summary export)
@@ -764,4 +792,4 @@ Cross-disciplinary team spanning commercial and biology domain knowledge, full-s
 
 ## License
 
-Private — Arclight Bio · Nucleate NY BioHack 2026
+Copyright © 2026 Arclight Bio · Nucleate NY BioHack 2026. See [LICENSE](LICENSE). Demo and evaluation use permitted for hackathon judging.

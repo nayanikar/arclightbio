@@ -88,11 +88,8 @@ arclight-bio@*
 11.16.0
 /next
 
-# --- Docs & specs (not required to run the app; keep locally or in wiki) ---
-/issues.md
+# --- Local session index (superseded by README + AGENTS.md + JUDGES.md) ---
 /index.md
-/opportunity_space_build_spec.md
-/public/*_spec.md
 
 # --- Spacebase CLI / marketplace SDK (not imported by Next.js runtime) ---
 /marketplace/
