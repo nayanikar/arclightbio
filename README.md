@@ -9,7 +9,7 @@
 | **Sponsor challenge** | Pfizer — Commercial Development Discovery |
 | **Secondary fit** | 05 — Regulatory & Documentation |
 | **Product type** | AI-native commercial development discovery platform |
-| **Live demo** | _See [Submission TODOs](#submission-todos)_ |
+| **Live demo** | [https://arclightbio.vercel.app](https://arclightbio.vercel.app) |
 | **Demo video** | _See [Submission TODOs](#submission-todos)_ |
 
 **Discovery Program** is an autonomous research system for pharmaceutical commercial development. Upload a patient cohort and a clinical question — specialized agents run a two-phase pipeline from anchor populations through a structured hypothesis funnel to IND-ready program assessments, querying **live** PubMed, ClinicalTrials.gov, Open Targets, patents, and FDA data at every step.
@@ -574,8 +574,9 @@ public/marketing/            # Product screenshots
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `ANTHROPIC_API_KEY` | **Yes** | All agent reasoning |
-| `SUPABASE_SERVICE_ROLE_KEY` | Production | Server-side database writes |
-| `NEXT_PUBLIC_SUPABASE_URL` | Production | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_URL` | **Production** | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Production** | Server-side database writes — **required on Vercel** (local dev can fall back to anon key) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production | Client-side Supabase reads |
 | `NCBI_API_KEY` | Recommended | PubMed rate limits |
 | `LENS_API_KEY` | Recommended | Patent search |
 | `OPENFDA_API_KEY` | Optional | Drug labels / FAERS |
@@ -589,11 +590,111 @@ See [`.env.local.example`](.env.local.example).
 
 Run in order in Supabase SQL Editor: **`001` → `022`**. Critical path: `016_v3_pipeline.sql` through `019_agent_trail.sql`, `022_enable_rls.sql`.
 
+### Vercel deployment (production)
+
+| | |
+|---|---|
+| **Production URL** | [https://arclightbio.vercel.app](https://arclightbio.vercel.app) |
+| **Vercel project** | `arclightbio` · Kaustubh Lohani's projects |
+| **Framework** | Next.js 14.2 · Node 24.x on Vercel |
+| **Deploy command** | `vercel deploy --prod` (from repo root) |
+
+**First-time setup:**
+
+```bash
+cd arclightbio
+npm i -g vercel          # or use npx vercel
+vercel login
+vercel link              # links to arclightbio project
+```
+
+**Sync environment variables to Vercel** (required for production — see [Troubleshooting](#troubleshooting-local-vs-production)):
+
+```bash
+# Push each key from .env.local (production environment)
+grep -v '^#' .env.local | grep '=' | while IFS='=' read -r key value; do
+  printf '%s' "${value%% *}" | vercel env add "$key" production --yes
+done
+printf 'false' | vercel env add SPACEBASE_ENABLED production --yes
+vercel deploy --prod --yes   # redeploy after env changes
+```
+
+**Critical production variables** (all must be set before discoveries and APIs work):
+
+| Variable | Why it matters |
+|----------|----------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Database project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Required in production** — without it, Vercel falls back to an empty ephemeral file store and the dashboard shows zero programs |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client-side Supabase reads |
+| `ANTHROPIC_API_KEY` | Agent reasoning and query classification |
+| `NCBI_API_KEY` | PubMed literature queries |
+| `LENS_API_KEY` | Patent / IP landscape (Phase 2) |
+| `OPENFDA_API_KEY` | Drug labels and adverse events |
+| `SEMANTIC_SCHOLAR_API_KEY` | Supplementary literature |
+| `SPACEBASE_ENABLED` | Set to `false` on Vercel (local-only observatory) |
+
+Optional but recommended: `ADMIN_API_KEY` to protect `/api/admin/*` routes.
+
+### Verify production deployment
+
+```bash
+# Should return 9+ discovery programs from Supabase
+curl -s https://arclightbio.vercel.app/api/opportunities \
+  | python3 -c "import sys,json; print(len(json.load(sys.stdin)['opportunities']))"
+
+# Org contexts for discover flow
+curl -s https://arclightbio.vercel.app/api/discover
+
+# Undruggable registry
+curl -s https://arclightbio.vercel.app/api/undruggable
+```
+
+**Verified production connectivity (June 2026):**
+
+| Service | Status |
+|---------|--------|
+| Supabase (discovery programs, cohorts, trail) | Connected — 9 programs in portfolio |
+| Anthropic Claude | Connected — live query classification |
+| PubMed (NCBI) | Connected — evidence cards with live URLs |
+| ClinicalTrials.gov | Connected — no API key required |
+| Open Targets | Connected — no API key required |
+| Lens Patents | Connected — Phase 2 IP/FTO steps |
+| OpenFDA | Key configured |
+| Semantic Scholar | Key configured |
+
+`/api/health` intentionally returns 404 in production (`NODE_ENV === "production"` guard). Use completed discovery program pages or the curl checks above to verify API connectivity.
+
+### Troubleshooting: local vs production
+
+**Symptom:** Discoveries visible locally but not on Vercel.
+
+**Root cause:** Local dev can use `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback admin client when `SUPABASE_SERVICE_ROLE_KEY` is unset. Production **requires** `SUPABASE_SERVICE_ROLE_KEY` — without it, `isSupabaseConfigured()` returns false and the app reads from `.data/store.json`, which is always empty on serverless.
+
+**Fix:**
+
+1. Confirm all three Supabase vars are set in Vercel → Settings → Environment Variables (Production).
+2. Redeploy: `vercel deploy --prod --yes` (env changes do not apply to existing deployments).
+3. Hard-refresh the browser on [https://arclightbio.vercel.app/dashboard](https://arclightbio.vercel.app/dashboard).
+
+**Symptom:** Local dashboard shows programs that production does not.
+
+Both environments read the **same Supabase project** when configured correctly. Local `localStorage` caches (`arclight_opportunity_*` keys) can briefly show stale snapshots — production has no prior cache. Clear browser storage or compare API responses:
+
+```bash
+curl -s http://localhost:3000/api/opportunities | python3 -c "import sys,json; print(len(json.load(sys.stdin)['opportunities']))"
+curl -s https://arclightbio.vercel.app/api/opportunities | python3 -c "import sys,json; print(len(json.load(sys.stdin)['opportunities']))"
+```
+
+Counts should match. If local is higher, those extra programs exist only in `localStorage` cache, not in Supabase.
+
+**No data migration needed:** Discovery programs are stored in Supabase (`opportunity_objects`), not in git or Vercel build artifacts. Apply migrations `001` → `022` on the shared Supabase project once.
+
 ### Deployment notes
 
 - Target: **Vercel** (uses `@vercel/functions` `waitUntil` for async pipelines)
-- Row-level security enabled on all tables (`022_enable_rls.sql`)
+- Row-level security enabled on all tables (`022_enable_rls.sql`); app uses service role (bypasses RLS)
 - Cohort upload capped at 5 MB / 10,000 rows
+- Long-running discovery pipelines may need **Vercel Pro** for extended function duration (`maxDuration`)
 - Open showcase deployment for hackathon judges
 
 ### Scripts
@@ -652,7 +753,7 @@ Cross-disciplinary team spanning commercial and biology domain knowledge, full-s
 
 ## Submission TODOs
 
-- [ ] **Deploy the application** (Vercel or hosting) and add live URL to the metadata table at the top
+- [x] **Deploy the application** — live at [https://arclightbio.vercel.app](https://arclightbio.vercel.app)
 - [ ] **Add demo video URL** (60s walkthrough: home → discover → program page → dashboard → registry)
 - [ ] **Capture program page screenshots** after a completed discovery run (`npm run capture-marketing [opportunityId]`)
 - [ ] **Refine team section** — add roles, contributions, and **Natasha's last name**
